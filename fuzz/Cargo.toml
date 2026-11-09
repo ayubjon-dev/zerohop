@@ -1,0 +1,69 @@
+[package]
+name = "zerohop-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+blake3 = "1.8"
+ed25519-dalek = "3.0"
+libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
+postcard = { version = "1.1", default-features = false, features = ["use-std"] }
+serde = "1.0"
+tempfile = "3.27"
+tokio = { version = "1", features = ["rt", "io-util", "time", "macros", "sync"] }
+zerohop-core = { path = "../crates/zerohop-core" }
+
+[[bin]]
+name = "frames"
+path = "fuzz_targets/frames.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "names"
+path = "fuzz_targets/names.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "links"
+path = "fuzz_targets/links.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "manifest"
+path = "fuzz_targets/manifest.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ledger"
+path = "fuzz_targets/ledger.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "writer"
+path = "fuzz_targets/writer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "session"
+path = "fuzz_targets/session.rs"
+test = false
+doc = false
+bench = false

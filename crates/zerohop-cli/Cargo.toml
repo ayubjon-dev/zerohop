@@ -1,0 +1,23 @@
+[package]
+name = "zerohop-cli"
+description = "Command-line interface for Zerohop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "zerohop"
+path = "src/main.rs"
+
+[features]
+dev-loopback = ["zerohop-core/dev-loopback"]
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.6", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+zerohop-core = { path = "../zerohop-core" }

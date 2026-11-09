@@ -1,0 +1,429 @@
+{
+  "@@locale": "en",
+  "onboardTitle": "What should this device be called?",
+  "onboardHint": "Only your own devices will see this name.",
+  "nameLabel": "Device name",
+  "continueAction": "Continue",
+  "myDevices": "My devices",
+  "addDevice": "Add device",
+  "add": "Add",
+  "history": "History",
+  "settings": "Settings",
+  "devices": "Devices",
+  "nearby": "Nearby",
+  "offline": "Offline",
+  "homeHint": "Pick a device to send files to it",
+  "emptyTitle": "This is your only device so far",
+  "emptyBody": "Install Zerohop on another device and link it once. After that, files go directly between them, without the internet.",
+  "dropTitle": "Drop files here",
+  "dropHint": "Files go directly to {name}, without the internet",
+  "@dropHint": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "dropHintOffline": "{name} is not on this network right now",
+  "@dropHintOffline": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "chooseFiles": "Choose files",
+  "chooseFolder": "Choose folder",
+  "addFiles": "Add files",
+  "clear": "Clear",
+  "send": "Send",
+  "sendTo": "Send to {name}",
+  "@sendTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "removeItem": "Remove {name}",
+  "@removeItem": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "folderKind": "Folder",
+  "fileCount": "{count, plural, =1{{count} file} other{{count} files}}",
+  "@fileCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sentCount": "{count, plural, =1{{count} file sent} other{{count} files sent}}",
+  "@sentCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "receivedCount": "{count, plural, =1{{count} file received} other{{count} files received}}",
+  "@receivedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sizeSummary": "{count}, {size}",
+  "@sizeSummary": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "cancelTransfer": "Cancel",
+  "done": "Done",
+  "doneSent": "{summary} to {name}. Every file was verified.",
+  "@doneSent": {
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "doneReceived": "{summary} from {name}. Every file was verified.",
+  "@doneReceived": {
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "heldNote": "{count, plural, =1{One item looks like a program and is waiting for you in History.} other{{count} items look like programs and are waiting for you in History.}}",
+  "@heldNote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "heldNoteSent": "{count, plural, =1{One item looks like a program and is waiting for a decision on the other device.} other{{count} items look like programs and are waiting for a decision on the other device.}}",
+  "@heldNoteSent": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sendMore": "Send more",
+  "close": "Close",
+  "resume": "Continue",
+  "showInFolder": "Show in folder",
+  "progressOf": "{done} of {total}",
+  "@progressOf": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "perSecond": "{size}/s",
+  "@perSecond": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "sendingTo": "Sending to {name}",
+  "@sendingTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "receivingFrom": "Receiving from {name}",
+  "@receivingFrom": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "waitingAnswer": "Waiting for the other device to accept",
+  "encryptedLine": "Directly over your local network, encrypted",
+  "incomingTitle": "{name} is sending files",
+  "@incomingTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "decline": "Decline",
+  "accept": "Accept",
+  "programWarning": "This includes a program: {name}.",
+  "@programWarning": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "programAdvice": "Accept only if you sent it yourself.",
+  "receiveFrom": "Receiving from this device",
+  "receiving": "Receiving files",
+  "modeAsk": "Always ask",
+  "modeAskSub": "Every transfer waits for your answer",
+  "modeSmart": "Automatically, except programs",
+  "modeSmartSub": "You are asked only when programs are included",
+  "modeAuto": "Automatically",
+  "modeAutoSub": "Everything is saved without asking",
+  "modeRefuse": "Don't accept",
+  "modeRefuseSub": "This device can't send files here",
+  "modeDefault": "As in Settings",
+  "deviceCode": "Device code {code}",
+  "@deviceCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "removeDevice": "Disconnect device",
+  "removeTitle": "Disconnect {name}?",
+  "@removeTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "removeBody": "It will no longer be able to exchange files with your other devices. Anything it already received stays on it.",
+  "removeAction": "Disconnect",
+  "cancelAction": "Cancel",
+  "back": "Back",
+  "pairIntro": "Open Zerohop on the other device. Link it once and it will see all your devices.",
+  "showCode": "Show a code here",
+  "showCodeSub": "Six digits to type on the other device",
+  "enterCode": "Enter a code",
+  "enterCodeSub": "If one is already showing on the other device",
+  "codeTitle": "Linking code",
+  "roomLine": "Room {room}. The code works once and expires in {seconds} s.",
+  "@roomLine": {
+    "placeholders": {
+      "room": {
+        "type": "String"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "waitingForDevice": "Waiting for the other device",
+  "enterTitle": "Enter the code",
+  "enterLabel": "Six digits from the other device's screen",
+  "roomsTitle": "Found on this network",
+  "roomsSearching": "Looking for a device showing a code",
+  "room": "Room {label}",
+  "@room": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "manualAddress": "Type the address instead",
+  "addressLabel": "Address, for example 192.168.1.20:53319",
+  "connecting": "Connecting",
+  "compareTitle": "Check the number",
+  "compareSub": "It must be the same on both screens",
+  "otherDevice": "Other device",
+  "numbersMatch": "The numbers match",
+  "numbersDiffer": "They don't match",
+  "finishing": "Finishing the link",
+  "pairedToast": "{name} added",
+  "@pairedToast": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "historyEmpty": "Files you send and receive will appear here.",
+  "toName": "To {name}, {size}",
+  "@toName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "fromName": "From {name}, {size}",
+  "@fromName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "historyDeclined": "Transfer declined",
+  "historyCancelled": "Transfer cancelled",
+  "historyInterrupted": "Transfer interrupted",
+  "heldSection": "Waiting for your decision",
+  "heldBody": "These look like one kind of file but contain programs. If you do nothing, they are deleted after 24 hours.",
+  "letIn": "Keep",
+  "delete": "Delete",
+  "heldFrom": "From {name}, {size}",
+  "@heldFrom": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "unfinishedSection": "Not finished",
+  "forget": "Forget",
+  "clearHistory": "Clear history",
+  "visible": "Visible on the network",
+  "visibleSub": "Your devices can find this one",
+  "folder": "Folder for files",
+  "downloadsFolder": "Downloads",
+  "change": "Change",
+  "open": "Open",
+  "confirmNew": "Approve new devices here",
+  "confirmNewSub": "A device added through another one waits for your approval on this device",
+  "color": "Color",
+  "cobalt": "Cobalt",
+  "sunset": "Sunset",
+  "mint": "Mint",
+  "appearance": "Appearance",
+  "themeSystem": "System",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "language": "Language",
+  "langSystem": "System",
+  "thisDevice": "This device",
+  "startOver": "Start over",
+  "startOverTitle": "Start over on this device?",
+  "startOverBody": "This device will leave your other devices and forget them. Files already received stay where they are.",
+  "removedBanner": "This device was disconnected from your other devices.",
+  "folderProblem": "The chosen folder is unavailable, so files are going to the default folder.",
+  "newDeviceTitle": "New device: {name}",
+  "@newDeviceTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "newDeviceBody": "It was added through another of your devices. Allow it to send files here?",
+  "allow": "Allow",
+  "errUnreachable": "Can't reach this device. Check that Zerohop is open and both devices are on the same network.",
+  "errConnectionLost": "The connection dropped. You can continue the transfer.",
+  "errDeclined": "The other device declined the transfer.",
+  "errNoSpace": "The other device doesn't have enough space.",
+  "errBusy": "The other device is busy. Try again in a minute.",
+  "errInvalidName": "One of the names can't be saved on the other device.",
+  "errCancelled": "Transfer cancelled.",
+  "errCancelledByPeer": "The transfer was cancelled on the other device.",
+  "errIntegrity": "A file was damaged on the way. Send it again.",
+  "errSourceChanged": "A file changed while it was being sent. Send it again.",
+  "errSourceUnreadable": "A file couldn't be read.",
+  "errNothingToSend": "There is nothing to send here.",
+  "errRemoved": "This device was disconnected from your other devices.",
+  "errPeerRemoved": "That device is no longer one of yours.",
+  "errCannotResume": "This can no longer be continued. Send the files again.",
+  "errProtocol": "The other device replied incorrectly. Update Zerohop on both devices.",
+  "errStorage": "Files couldn't be written to the disk.",
+  "errPeerStorage": "The other device couldn't save the files.",
+  "errAwaiting": "Approve this device first.",
+  "errInUse": "Zerohop is already open.",
+  "errWrongCode": "That code didn't work. Show a new code and try again.",
+  "errTimeout": "Time ran out. Show a new code.",
+  "errPairDeclined": "The link was declined.",
+  "errPairUnreachable": "Couldn't connect. Check that both devices are on the same network.",
+  "errPairFailed": "Linking failed. Try again.",
+  "errAlreadyLinked": "This device is already linked to others. Start over in Settings first.",
+  "errBadAddress": "That address doesn't look right.",
+  "errBadName": "Enter a shorter name.",
+  "errFolder": "That folder can't be used.",
+  "errGeneric": "Something went wrong. Try again.",
+  "unitB": "B",
+  "unitKB": "KB",
+  "unitMB": "MB",
+  "unitGB": "GB",
+  "unitTB": "TB",
+  "clipboard": "Shared clipboard",
+  "clipboardSub": "Copy on one device and paste on another. Passwords from password managers stay where they are.",
+  "clipboardOnDevice": "What you copy here can be pasted there",
+  "clipboardOffDevice": "Off for this device",
+  "clipboardOff": "Off",
+  "clipboardOneTap": "Send with one tap",
+  "clipboardSend": "Send",
+  "clipboardEnable": "Turn on",
+  "clipboardOptions": "Options",
+  "clipTurnOnFirst": "Turn on the shared clipboard in Settings first.",
+  "clipSendTo": "Send to this device",
+  "clipReceiveFrom": "Receive from this device",
+  "clipText": "Text and links",
+  "clipImages": "Pictures",
+  "clipAllow": "Allow",
+  "clipAllowTitle": "macOS permission",
+  "clipNeedsAllow": "Let Zerohop read the clipboard: choose Allow in macOS settings",
+  "clipSent": "Clipboard sent to nearby devices",
+  "clipArrived": "Clipboard received: {name}",
+  "@clipArrived": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "clipNoDevices": "No nearby device can take the clipboard",
+  "clipFailed": "Could not send the clipboard",
+  "clipEmpty": "Copy some text or a picture first",
+  "clipSecret": "This was copied as secret and is not sent",
+  "clipTooLarge": "This is too large for the clipboard",
+  "clipSame": "This already came from another device",
+  "clipDenied": "The system did not allow reading the clipboard",
+  "clipTileTitle": "Button in quick settings",
+  "clipTileSub": "Send what you copied from quick settings or the notification, without opening the app.",
+  "clipTileAdd": "Add",
+  "clipTileManual": "Add the Send clipboard tile to quick settings by hand",
+  "clipMenuTitle": "“To Zerohop” entry",
+  "clipMenuSub": "Adds it to the text selection menu, and text from Share goes straight to the clipboard. Any app on screen can use it too, so turn it on only if you trust your apps.",
+  "errKeyUnavailable": "The system did not give access to this device's key. Allow access and try again.",
+  "errKeyLocked": "This device's key can no longer be opened. To keep using the app, start over and link your devices again.",
+  "keyRetry": "Try again",
+  "keyStartOver": "Start over",
+  "shareNoDevices": "Add a device first",
+  "shareChooseDevice": "Choose a device for these files"
+}

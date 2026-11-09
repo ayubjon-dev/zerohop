@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="share_label">To Zerohop</string>
+    <string name="tile_label">Send clipboard</string>
+    <string name="notification_channel">Working in the background</string>
+    <string name="notification_title">Zerohop is ready</string>
+    <string name="notification_text">Shared clipboard is on</string>
+    <string name="notification_send">Send clipboard</string>
+    <string name="clip_sent">Clipboard sent to nearby devices</string>
+    <string name="clip_off">Turn on the shared clipboard in Zerohop first</string>
+    <string name="clip_no_devices">No nearby device can take the clipboard</string>
+    <string name="clip_failed">Could not send the clipboard</string>
+    <string name="clip_empty">Copy some text or a picture first</string>
+    <string name="clip_secret">This was copied as secret and is not sent</string>
+    <string name="clip_too_large">This is too large for the clipboard</string>
+    <string name="clip_same">This already came from another device</string>
+    <string name="share_preparing">Getting files ready…</string>
+    <string name="share_no_room">Not enough space on the phone to prepare these files</string>
+    <string name="share_failed">Could not read the shared files</string>
+    <string name="share_text_off">To send text, turn on the “To Zerohop” entry in Zerohop settings</string>
+</resources>

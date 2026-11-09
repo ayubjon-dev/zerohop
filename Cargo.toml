@@ -1,0 +1,25 @@
+[workspace]
+members = ["crates/zerohop-core", "crates/zerohop-cli", "crates/zerohop-app", "crates/zerohop-ffi"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/ayubjon-dev/zerohop"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "warn"
+cast_possible_truncation = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

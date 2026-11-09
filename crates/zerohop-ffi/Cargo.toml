@@ -1,0 +1,24 @@
+[package]
+name = "zerohop-ffi"
+description = "C interface between the Zerohop core and the Flutter app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "zerohop_ffi"
+crate-type = ["cdylib", "rlib"]
+
+# The only crate allowed to use `unsafe`: three small functions at the C boundary.
+[lints.rust]
+missing_docs = "warn"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[dependencies]
+zerohop-app = { path = "../zerohop-app" }
+zeroize = "1.9"

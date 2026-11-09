@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="share_label">В Zerohop</string>
+    <string name="tile_label">Отправить буфер</string>
+    <string name="notification_channel">Работа в фоне</string>
+    <string name="notification_title">Zerohop готов</string>
+    <string name="notification_text">Общий буфер включён</string>
+    <string name="notification_send">Отправить буфер</string>
+    <string name="clip_sent">Буфер отправлен на устройства рядом</string>
+    <string name="clip_off">Сначала включите общий буфер в Zerohop</string>
+    <string name="clip_no_devices">Рядом нет устройств, которым можно отправить буфер</string>
+    <string name="clip_failed">Не удалось отправить буфер</string>
+    <string name="clip_empty">Сначала скопируйте текст или картинку</string>
+    <string name="clip_secret">Это скопировано как секретное и не отправляется</string>
+    <string name="clip_too_large">Это слишком большое для буфера</string>
+    <string name="clip_same">Это уже пришло с другого устройства</string>
+    <string name="share_preparing">Подготовка файлов…</string>
+    <string name="share_no_room">На телефоне не хватает места, чтобы подготовить файлы</string>
+    <string name="share_failed">Не удалось прочитать файлы</string>
+    <string name="share_text_off">Чтобы отправлять текст, включите пункт «В Zerohop» в настройках Zerohop</string>
+</resources>

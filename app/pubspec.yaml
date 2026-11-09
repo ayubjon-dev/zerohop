@@ -1,0 +1,39 @@
+name: zerohop
+description: Private file transfer between your own devices.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  bonsoir: ">=7.1.0 <7.1.6"
+  code_assets: ^2.2.0
+  desktop_drop: ^0.8.0
+  ffi: ^2.1.3
+  file_selector: ^1.1.0
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  hooks: ^2.2.0
+  intl: any
+  path_parsing: ^1.1.0
+  path_provider: ^2.1.6
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/fonts/OFL.txt
+  generate: true
+  config:
+    enable-swift-package-manager: true
+  fonts:
+    - family: Onest
+      fonts:
+        - asset: assets/fonts/Onest-Variable.ttf
