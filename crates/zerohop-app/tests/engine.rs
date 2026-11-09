@@ -19,6 +19,7 @@ use zerohop_app::{Config, Engine, KeySealing};
 use zeroize::Zeroizing;
 
 const PATIENCE: Duration = Duration::from_secs(20);
+const ERROR_LOCK_VIOLATION: i32 = 33;
 
 struct Side {
     engine: Engine,
@@ -100,9 +101,40 @@ impl Side {
             if let Some(found) = find(&self.log.lock().unwrap()) {
                 return found;
             }
-            assert!(start.elapsed() < PATIENCE, "timed out waiting for {what}");
+            if start.elapsed() >= PATIENCE {
+                panic!("timed out waiting for {what}; {}", self.latest_messages());
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    /// Waits until part of an incoming file has reached this side's disk.
+    ///
+    /// Progress reports come only a few times a second, and a fast machine
+    /// can finish a whole test file between two of them.
+    fn wait_for_data(&self) {
+        let unfinished = self.folder.join(".zerohop-tmp");
+        self.wait("data to reach the disk", |_| {
+            let transfers = std::fs::read_dir(&unfinished).ok()?;
+            transfers
+                .flatten()
+                .any(|transfer| holds_bytes(&transfer.path().join("files")))
+                .then_some(())
+        });
+    }
+
+    /// What this side said last, so a timeout on a machine nobody can log in
+    /// to still explains itself.
+    fn latest_messages(&self) -> String {
+        let log = self.log.lock().unwrap();
+        let latest: Vec<String> = log
+            .iter()
+            .rev()
+            .filter(|m| m["event"] != "snapshot")
+            .take(5)
+            .map(ToString::to_string)
+            .collect();
+        format!("latest messages, newest first: {}", latest.join(" | "))
     }
 
     fn snapshot(&self) -> Value {
@@ -333,6 +365,9 @@ fn the_owner_is_asked_and_can_accept() {
     assert_eq!(offer["peer_name"], "Phone");
     assert_eq!(offer["names"][0], "photo.png");
     assert_eq!(offer["files"], 1);
+    // A transfer waiting for an answer is reported, with nothing moved yet.
+    let report = b.wait_event("a progress report", |m| m["event"] == "progress");
+    assert_eq!(report["items"][0]["done"], 0);
     a.ok(
         "answer_offer",
         json!({ "offer": offer["id"], "accept": true }),
@@ -442,9 +477,7 @@ fn cancelling_a_transfer_leaves_nothing_behind() {
     let path = write(source.path(), "big.bin", &vec![1u8; 300 * 1024 * 1024]);
 
     let sent = b.ok("send", json!({ "device": device_of(&b), "paths": [path] }));
-    b.wait_event("data to move", |m| {
-        m["event"] == "progress" && m["items"][0]["done"].as_u64().unwrap_or(0) > 0
-    });
+    a.wait_for_data();
     b.ok("cancel", json!({ "transfer": sent["transfer"] }));
 
     ended(&b, "cancelled");
@@ -573,9 +606,7 @@ fn an_interrupted_transfer_can_be_continued_from_the_interface() {
     let path = write(source.path(), "big.bin", &data);
 
     let sent = b.ok("send", json!({ "device": device_of(&b), "paths": [path] }));
-    b.wait_event("data to move", |m| {
-        m["event"] == "progress" && m["items"][0]["done"].as_u64().unwrap_or(0) > 0
-    });
+    a.wait_for_data();
     // The receiving device goes away part way through.
     drop(a);
     let end = ended(&b, "connection_lost");
@@ -610,9 +641,7 @@ fn a_transfer_that_cannot_continue_says_so_and_is_forgotten() {
     let path = write(source.path(), "big.bin", &vec![3u8; 120 * 1024 * 1024]);
 
     let sent = b.ok("send", json!({ "device": device_of(&b), "paths": [path] }));
-    b.wait_event("data to move", |m| {
-        m["event"] == "progress" && m["items"][0]["done"].as_u64().unwrap_or(0) > 0
-    });
+    a.wait_for_data();
     drop(a);
     ended(&b, "connection_lost");
     b.wait_snapshot("the unfinished list", |s| {
@@ -674,6 +703,26 @@ fn set_rule(side: &Side, rule: &str, value: bool) {
     let mut params = json!({ "device": device_of(side) });
     params[rule] = json!(value);
     side.ok("set_clipboard_device", params);
+}
+
+/// Whether any file under `dir` has bytes in it. The receiver is working here,
+/// so anything may vanish while this looks.
+fn holds_bytes(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let path = entry.path();
+        // Not `entry.metadata()`: on Windows a directory listing can show a
+        // file that is still open as empty.
+        std::fs::metadata(&path).is_ok_and(|m| {
+            if m.is_dir() {
+                holds_bytes(&path)
+            } else {
+                m.len() > 0
+            }
+        })
+    })
 }
 
 fn files_under(dir: &Path, found: &mut Vec<PathBuf>) {
@@ -881,7 +930,17 @@ fn copied_content_never_reaches_the_disk_or_the_snapshots() {
         files_under(dirs.1.path(), &mut files);
         assert!(!files.is_empty());
         for file in files {
-            let bytes = std::fs::read(&file).unwrap();
+            let bytes = match std::fs::read(&file) {
+                Ok(bytes) => bytes,
+                // Windows refuses to read a file while it is locked. Only
+                // empty files are used as locks, so there is nothing to find.
+                Err(e) if cfg!(windows) && e.raw_os_error() == Some(ERROR_LOCK_VIOLATION) => {
+                    let size = std::fs::metadata(&file).unwrap().len();
+                    assert_eq!(size, 0, "locked file with content: {}", file.display());
+                    continue;
+                }
+                Err(e) => panic!("cannot read {}: {e}", file.display()),
+            };
             assert!(
                 !bytes.windows(marker.len()).any(|w| w == marker.as_bytes()),
                 "copied content found in {}",

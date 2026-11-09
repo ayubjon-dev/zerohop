@@ -5,7 +5,8 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # New advisories appear without any change to the code.
+    # New advisories appear without any change to the code, so this run only
+    # looks at the dependencies. Every other job skips it.
     - cron: "17 6 * * 1"
 
 # Nothing here needs to change the repository or hold a secret.
@@ -29,6 +30,7 @@ defaults:
 jobs:
   rust:
     name: Rust on ${{ matrix.os }}
+    if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     # Windows is still being brought up, so a failure there is reported
     # without blocking anything until the port is finished.
@@ -70,6 +72,7 @@ jobs:
 
   fuzz-targets:
     name: Fuzz targets compile
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -83,6 +86,7 @@ jobs:
 
   interface:
     name: Interface
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,6 +112,7 @@ jobs:
 
   build:
     name: Build for ${{ matrix.name }}
+    if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.name == 'Windows' }}
     strategy:
