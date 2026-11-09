@@ -21,10 +21,10 @@ packages:
     dependency: "direct main"
     description:
       name: bonsoir
-      sha256: "20fed01e4616e625f4bafd9007ff899d231d8d79bebc8564853fa1e3570294a6"
+      sha256: "5a16185a921039a6cc6544e5f6539c989e8d8a7dc3b219a3bcbd583b1cb302f7"
       url: "https://pub.dev"
     source: hosted
-    version: "7.1.5"
+    version: "7.1.6"
   bonsoir_android:
     dependency: transitive
     description:
@@ -45,10 +45,10 @@ packages:
     dependency: transitive
     description:
       name: bonsoir_linux
-      sha256: "9afae7bb9509c5bd20a0ea2ca02a0f2b1ef09cca1ceb2ea288ed58a0f03d1e11"
+      sha256: b3ead464c679651940ba378d38720574b1bfdf9a5b0e8cb2d4480416e1e1b5a5
       url: "https://pub.dev"
     source: hosted
-    version: "7.1.0"
+    version: "7.1.1"
   bonsoir_platform_interface:
     dependency: transitive
     description:
@@ -125,18 +125,18 @@ packages:
     dependency: transitive
     description:
       name: dbus
-      sha256: a48d5da28e89bd02196e80d81ed8d7954923d00a0f4a68cc20b575038f023383
+      sha256: f7db8504e715b835f5ebe5fe74604ccd961d504c73389a5d8e81bafc2e2f3612
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.15"
+    version: "0.8.0"
   desktop_drop:
     dependency: "direct main"
     description:
       name: desktop_drop
-      sha256: "47ded09c85909edfed644fd4cbb5051b040d0aed5c79e7e062ea4b3b7156dbe4"
+      sha256: "8b07a8b4db47e0768c2a3a9433eb29160478be5f80905643fc0f79a4ae188e1e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.4"
+    version: "0.8.0"
   fake_async:
     dependency: transitive
     description:

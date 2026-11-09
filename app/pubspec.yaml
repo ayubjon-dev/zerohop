@@ -7,7 +7,7 @@ environment:
   sdk: ^3.9.0
 
 dependencies:
-  bonsoir: ">=7.1.0 <7.1.6"
+  bonsoir: ^7.1.6
   code_assets: ^2.2.0
   desktop_drop: ^0.8.0
   ffi: ^2.1.3
