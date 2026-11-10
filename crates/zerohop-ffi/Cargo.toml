@@ -11,7 +11,8 @@ publish = false
 name = "zerohop_ffi"
 crate-type = ["cdylib", "rlib"]
 
-# The only crate allowed to use `unsafe`: three small functions at the C boundary.
+# The only crate allowed to use `unsafe`: the small functions at the C boundary,
+# and on Windows the calls that protect the secret sealing the device key.
 [lints.rust]
 missing_docs = "warn"
 
@@ -23,3 +24,9 @@ panic = "deny"
 [dependencies]
 zerohop-app = { path = "../zerohop-app" }
 zeroize = "1.9"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+
+[dev-dependencies]
+tempfile = "3.27"

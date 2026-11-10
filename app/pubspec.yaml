@@ -7,6 +7,9 @@ environment:
   sdk: ^3.9.0
 
 dependencies:
+  # 7.1.6 needs dbus 0.8, but desktop_drop 0.8.1 to 0.8.4 still need dbus 0.7.
+  # desktop_drop 0.9 needs cross_file 0.4, while file_selector 1.1.0 needs 0.3.
+  # Lift this once those line up, rather than taking desktop_drop back to 0.8.0.
   bonsoir: ">=7.1.0 <7.1.6"
   code_assets: ^2.2.0
   desktop_drop: ^0.8.0

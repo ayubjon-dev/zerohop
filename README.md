@@ -31,7 +31,7 @@ There are no published releases yet. To try it, build it from source.
 - All traffic uses TLS 1.3 with a post-quantum hybrid key exchange. There is no unencrypted mode and no web page.
 - Names from the network are validated and files can only land inside your receive folder. Programs can be held back for your approval.
 - Each segment of a file is verified with BLAKE3 before it is accepted.
-- The device key is encrypted on disk with a secret held by the macOS keychain or the Android Keystore.
+- The device key is encrypted on disk with a secret held by the macOS keychain, the Android Keystore or Windows data protection (DPAPI).
 - Zerohop keeps clipboard contents in memory only, removes them after two minutes, and never writes them to disk or to the transfer history. Content marked secret by password managers is skipped.
 
 ### Known limits
@@ -79,7 +79,7 @@ The fuzz targets are described in [fuzz/README.md](fuzz/README.md).
 |---|---|
 | `crates/zerohop-core` | Protocol, pairing, encrypted sessions, transfers, receive rules |
 | `crates/zerohop-app` | The application layer shared by every interface |
-| `crates/zerohop-ffi` | The only crate allowed to use `unsafe`: three functions at the boundary with the app |
+| `crates/zerohop-ffi` | The only crate allowed to use `unsafe`: four functions at the boundary with the app, and on Windows the calls that protect the device key's secret |
 | `crates/zerohop-cli` | The command-line tool |
 | `app` | The Flutter interface and the native code for each platform |
 | `fuzz` | Coverage-guided fuzz targets |
