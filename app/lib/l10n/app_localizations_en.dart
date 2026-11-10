@@ -590,7 +590,7 @@ class L10nEn extends L10n {
 
   @override
   String get errAlreadyLinked =>
-      'This device is already linked to others. Start over in Settings first.';
+      'This device is already linked to others. Show a code here and enter it on the new device.';
 
   @override
   String get errBadAddress => 'That address doesn\'t look right.';
