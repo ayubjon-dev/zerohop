@@ -20,7 +20,7 @@
 |---|---|
 | macOS | Работает |
 | Android | Работает. Отправка буфера требует одного нажатия, потому что Android не даёт приложениям читать его в фоне |
-| Windows | В разработке, ещё не проверено |
+| Windows | Передача файлов работает. Общий буфер, работа в фоне и установщик ещё впереди |
 | iPhone и iPad | Запланировано |
 
 Готовых версий пока нет. Чтобы попробовать, соберите приложение из исходников.
@@ -50,11 +50,13 @@
 
 - **macOS:** Xcode
 - **Android:** JDK 21 и Android SDK с NDK 28.2
+- **Windows:** Visual Studio 2022 с набором «Разработка классических приложений на C++»
 
 ```bash
 cd app
 flutter build macos --release
 flutter build apk --release --target-platform android-arm,android-arm64
+flutter build windows --release
 ```
 
 Есть и инструмент командной строки:

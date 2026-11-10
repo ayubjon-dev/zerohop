@@ -20,7 +20,7 @@ Private file transfer between your own devices, directly over your local network
 |---|---|
 | macOS | Works |
 | Android | Works. Sending the clipboard takes one tap, because Android does not let apps read it in the background |
-| Windows | In progress, not yet verified |
+| Windows | File transfer works. The shared clipboard, background mode and an installer are still to come |
 | iPhone and iPad | Planned |
 
 There are no published releases yet. To try it, build it from source.
@@ -50,11 +50,13 @@ You need Rust (stable), Flutter 3.47, and for each target:
 
 - **macOS:** Xcode
 - **Android:** JDK 21 and the Android SDK with NDK 28.2
+- **Windows:** Visual Studio 2022 with the “Desktop development with C++” workload
 
 ```bash
 cd app
 flutter build macos --release
 flutter build apk --release --target-platform android-arm,android-arm64
+flutter build windows --release
 ```
 
 There is also a command-line tool:
