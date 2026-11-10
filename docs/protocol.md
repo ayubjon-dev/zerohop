@@ -71,7 +71,7 @@ A device generates a fresh key pair each time it creates or joins a circle. Devi
 |---|---|
 | iOS, macOS | Keychain, this-device-only, excluded from iCloud sync |
 | Android | Encrypted under a key held in Android Keystore, excluded from backup |
-| Windows | Protected with DPAPI for the current user |
+| Windows | Protected with DPAPI for the current user, in the local profile rather than the roaming one |
 
 Keychain items can survive an app being uninstalled. On first launch with no app data, an implementation MUST delete any leftover Zerohop key instead of using it.
 

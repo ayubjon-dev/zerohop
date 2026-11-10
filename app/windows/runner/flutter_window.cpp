@@ -1,5 +1,8 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+#include <flutter_windows.h>
+
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -25,6 +28,23 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  platform_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "dev.zerohop/platform",
+          &flutter::StandardMethodCodec::GetInstance());
+  platform_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "activate") {
+          BringForward();
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,11 +60,28 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  // The channel talks through the engine, so it goes first.
+  platform_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
 
   Win32Window::OnDestroy();
+}
+
+void FlutterWindow::BringForward() {
+  HWND window = GetHandle();
+  if (window == nullptr) {
+    return;
+  }
+  ::ShowWindow(window, ::IsIconic(window) ? SW_RESTORE : SW_SHOW);
+  if (!::SetForegroundWindow(window)) {
+    FLASHWINFO flash = {};
+    flash.cbSize = sizeof(flash);
+    flash.hwnd = window;
+    flash.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG;
+    ::FlashWindowEx(&flash);
+  }
 }
 
 LRESULT
@@ -65,6 +102,14 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
+    case WM_GETMINMAXINFO: {
+      // The same smallest window as on a Mac, in this screen's pixels.
+      const int dpi = static_cast<int>(FlutterDesktopGetDpiForHWND(hwnd));
+      auto* limits = reinterpret_cast<MINMAXINFO*>(lparam);
+      limits->ptMinTrackSize.x = ::MulDiv(380, dpi, 96);
+      limits->ptMinTrackSize.y = ::MulDiv(620, dpi, 96);
+      return 0;
+    }
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

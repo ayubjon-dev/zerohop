@@ -1048,7 +1048,7 @@ abstract class L10n {
   /// No description provided for @errAlreadyLinked.
   ///
   /// In en, this message translates to:
-  /// **'This device is already linked to others. Start over in Settings first.'**
+  /// **'This device is already linked to others. Show a code here and enter it on the new device.'**
   String get errAlreadyLinked;
 
   /// No description provided for @errBadAddress.

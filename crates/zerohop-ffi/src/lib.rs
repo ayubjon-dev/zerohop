@@ -11,6 +11,9 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use zerohop_app::{Config, Engine, KeySealing};
 use zeroize::Zeroizing;
 
+#[cfg(windows)]
+mod windows_secret;
+
 /// Receives each message. The receiver owns it and returns it with [`zh_free`].
 pub type Callback = extern "C" fn(*mut c_char);
 
@@ -89,6 +92,52 @@ pub unsafe extern "C" fn zh_start(
         }
     }));
     started.unwrap_or(3)
+}
+
+/// Writes the secret that seals the device key for this Windows account into
+/// `out`, making it on first use and keeping it in `state_dir`.
+///
+/// Returns 0 on success, 1 for an unreadable path, 2 when Windows will not
+/// open or store the secret, 3 after a panic, 4 for a wrong buffer, and 5 on
+/// systems whose interface brings its own key store.
+///
+/// # Safety
+/// `state_dir` must be a valid NUL-terminated string. `out` must be null or
+/// point to `out_len` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zh_system_secret(
+    state_dir: *const c_char,
+    out: *mut u8,
+    out_len: usize,
+) -> i32 {
+    #[cfg(windows)]
+    {
+        if out.is_null() || out_len != SECRET_LEN {
+            return 4;
+        }
+        // SAFETY: the caller guarantees the string is valid.
+        let Some(state_dir) = (unsafe { read_text(state_dir) }) else {
+            return 1;
+        };
+        let found = catch_unwind(AssertUnwindSafe(|| {
+            windows_secret::load_or_create(std::path::Path::new(state_dir.as_str()))
+        }));
+        match found {
+            Ok(Ok(secret)) => {
+                // SAFETY: not null, and the caller guarantees `SECRET_LEN`
+                // writable bytes, which cannot overlap the secret.
+                unsafe { std::ptr::copy_nonoverlapping(secret.as_ptr(), out, SECRET_LEN) };
+                0
+            }
+            Ok(Err(_)) => 2,
+            Err(_) => 3,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (state_dir, out, out_len);
+        5
+    }
 }
 
 /// Hands a request to the engine. The answer arrives through the callback.

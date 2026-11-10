@@ -26,9 +26,10 @@ class PlatformBridge {
           : ClipboardSupport.none);
 
   /// Systems whose key store protects the device key on disk.
-  bool get sealsDeviceKey => _isMac || _isAndroid;
+  bool get sealsDeviceKey => _isMac || _isAndroid || Platform.isWindows;
 
-  /// The secret the system keeps for sealing the device key.
+  /// The secret the keychain or the Android Keystore keeps for sealing the
+  /// device key. On Windows the core asks the system itself.
   Future<Uint8List?> deviceSecret() =>
       _channel.invokeMethod<Uint8List>('deviceSecret');
 
@@ -66,7 +67,8 @@ class PlatformBridge {
     if (_isMac || _isAndroid) {
       await _channel.invokeMethod<void>('show', {'path': path});
     } else if (Platform.isWindows) {
-      await Process.run('explorer', [path]);
+      // Explorer opens a different folder when given forward slashes.
+      await Process.run('explorer', [path.replaceAll('/', r'\')]);
     }
   }
 
@@ -79,7 +81,9 @@ class PlatformBridge {
 
   /// Brings the window forward when someone needs an answer.
   Future<void> activate() async {
-    if (_isMac) await _channel.invokeMethod<void>('activate');
+    if (_isMac || Platform.isWindows) {
+      await _channel.invokeMethod<void>('activate');
+    }
   }
 
   /// Hears about copies and permission changes on systems that report them.

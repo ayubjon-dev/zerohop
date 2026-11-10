@@ -73,14 +73,14 @@ class AppState extends ChangeNotifier {
 
   Future<void> init() async {
     try {
-      final support = await getApplicationSupportDirectory();
+      final support = await _stateBase();
       final profile = Platform.environment['ZEROHOP_PROFILE'];
       final stateDir = profile == null
-          ? support.path
-          : '${support.path}/profile-$profile';
+          ? support
+          : '$support${Platform.pathSeparator}profile-$profile';
       final folder = await _defaultFolder(profile);
       if (!_coreStarted) {
-        final secret = await _deviceSecret();
+        final secret = await _deviceSecret(stateDir);
         if (platform.sealsDeviceKey && secret == null) {
           fatal = 'key_unavailable';
           notifyListeners();
@@ -114,12 +114,24 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Where this device keeps its key and settings. On Windows the roaming
+  /// profile can be copied to other computers, so they stay in the local one.
+  Future<String> _stateBase() async {
+    final local = Platform.environment['LOCALAPPDATA'];
+    if (Platform.isWindows && local != null && local.isNotEmpty) {
+      return '$local\\Zerohop';
+    }
+    return (await getApplicationSupportDirectory()).path;
+  }
+
   /// The key store can be briefly unavailable while the system is starting.
-  Future<Uint8List?> _deviceSecret() async {
+  Future<Uint8List?> _deviceSecret(String stateDir) async {
     if (!platform.sealsDeviceKey) return null;
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        final secret = await platform.deviceSecret();
+        final secret = Platform.isWindows
+            ? core.systemSecret(stateDir)
+            : await platform.deviceSecret();
         if (secret != null) return secret;
       } on PlatformException {
         // Treated like no answer: the caller reports it.
@@ -161,7 +173,8 @@ class AppState extends ChangeNotifier {
         await platform.downloadsBase() ??
         (await getDownloadsDirectory())?.path ??
         (await getApplicationDocumentsDirectory()).path;
-    return profile == null ? '$base/Zerohop' : '$base/Zerohop-$profile';
+    final name = profile == null ? 'Zerohop' : 'Zerohop-$profile';
+    return '$base${Platform.pathSeparator}$name';
   }
 
   Future<void> _restoreFolderAccess(Map<String, dynamic> settings) async {

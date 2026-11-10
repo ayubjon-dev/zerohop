@@ -150,3 +150,16 @@ jobs:
       - name: Build
         working-directory: app
         run: ${{ matrix.command }}
+      # The Windows build is kept for a week so it can be tried on a real
+      # machine. It is unsigned and only for testing.
+      - name: Add the C++ runtime to the Windows build
+        if: matrix.name == 'Windows'
+        run: cp /c/Windows/System32/{msvcp140,vcruntime140,vcruntime140_1}.dll app/build/windows/x64/runner/Release/
+      - name: Keep the Windows build
+        if: matrix.name == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zerohop-windows-test
+          path: app/build/windows/x64/runner/Release/
+          retention-days: 7
+          if-no-files-found: error
