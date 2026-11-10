@@ -1,0 +1,2 @@
+/* Shown when iOS asks for access to the local network. */
+"NSLocalNetworkUsageDescription" = "Zerohop находит ваши устройства в этой сети и отправляет файлы прямо на них.";

@@ -26,7 +26,8 @@ class PlatformBridge {
           : ClipboardSupport.none);
 
   /// Systems whose key store protects the device key on disk.
-  bool get sealsDeviceKey => _isMac || _isAndroid || Platform.isWindows;
+  bool get sealsDeviceKey =>
+      _isMac || _isAndroid || Platform.isWindows || Platform.isIOS;
 
   /// The secret the keychain or the Android Keystore keeps for sealing the
   /// device key. On Windows the core asks the system itself.
@@ -56,7 +57,7 @@ class PlatformBridge {
 
   /// A name for this device to start from.
   Future<String> suggestedName() async {
-    if (_isAndroid) {
+    if (_isAndroid || Platform.isIOS) {
       return await _channel.invokeMethod<String>('deviceName') ?? '';
     }
     return Platform.localHostname.split('.').first.replaceAll('-', ' ');
@@ -64,7 +65,7 @@ class PlatformBridge {
 
   /// Shows a folder to the owner. Received files are never opened.
   Future<void> showFolder(String path) async {
-    if (_isMac || _isAndroid) {
+    if (_isMac || _isAndroid || Platform.isIOS) {
       await _channel.invokeMethod<void>('show', {'path': path});
     } else if (Platform.isWindows) {
       // Explorer opens a different folder when given forward slashes.
@@ -159,6 +160,8 @@ class PlatformBridge {
 
   /// Keeps a phone from sleeping in the middle of a transfer.
   Future<void> keepAwake(bool on) async {
-    if (_isAndroid) await _channel.invokeMethod<void>('keepAwake', {'on': on});
+    if (_isAndroid || Platform.isIOS) {
+      await _channel.invokeMethod<void>('keepAwake', {'on': on});
+    }
   }
 }
