@@ -741,5 +741,20 @@ class L10nEn extends L10n {
   String get shareNoDevices => 'Add a device first';
 
   @override
-  String get shareChooseDevice => 'Choose a device for these files';
+  String get shareTitle => 'Send to which device?';
+
+  @override
+  String shareMore(int count) {
+    return 'and $count more';
+  }
+
+  @override
+  String get shareChoose => 'Choose a device';
+
+  @override
+  String get shareAwaiting => 'Waiting for your approval';
+
+  @override
+  String get shareNobodyNearby =>
+      'None of your devices is nearby right now. Open Zerohop on the one you are sending to and it will become available.';
 }

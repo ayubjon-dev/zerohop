@@ -12,6 +12,7 @@ import 'icons.dart';
 import 'onboarding.dart';
 import 'pair_pages.dart';
 import 'settings_page.dart';
+import 'share_dialog.dart';
 import 'widgets.dart';
 
 const wideBreakpoint = 760.0;
@@ -43,6 +44,7 @@ class AppShell extends StatelessWidget {
       );
     }
     final offer = snapshot?.offers.firstOrNull;
+    final sharing = state.sharing;
     final dark = Theme.of(context).brightness == Brightness.dark;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
@@ -50,6 +52,14 @@ class AppShell extends StatelessWidget {
         body: Stack(
           children: [
             Positioned.fill(child: body),
+            if (sharing != null && snapshot != null && state.fatal == null)
+              Positioned.fill(
+                child: ShareDialog(
+                  state: state,
+                  snapshot: snapshot,
+                  items: sharing,
+                ),
+              ),
             if (offer != null)
               Positioned.fill(
                 child: OfferDialog(state: state, offer: offer),

@@ -20,7 +20,7 @@ Private file transfer between your own devices, directly over your local network
 |---|---|
 | macOS | Works |
 | Android | Works. Sending the clipboard takes one tap, because Android does not let apps read it in the background |
-| Windows | File transfer works. The shared clipboard, background mode and Send to are built but not yet tried on a real computer. No installer yet |
+| Windows | Works, including the shared clipboard, background mode and Send to. No installer yet |
 | iPhone and iPad | Planned |
 
 There are no published releases yet. To try it, build it from source.

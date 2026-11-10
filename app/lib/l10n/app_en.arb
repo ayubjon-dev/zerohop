@@ -425,5 +425,16 @@
   "keyRetry": "Try again",
   "keyStartOver": "Start over",
   "shareNoDevices": "Add a device first",
-  "shareChooseDevice": "Choose a device for these files"
+  "shareTitle": "Send to which device?",
+  "shareMore": "and {count} more",
+  "@shareMore": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shareChoose": "Choose a device",
+  "shareAwaiting": "Waiting for your approval",
+  "shareNobodyNearby": "None of your devices is nearby right now. Open Zerohop on the one you are sending to and it will become available."
 }

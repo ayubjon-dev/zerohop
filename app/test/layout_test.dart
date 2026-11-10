@@ -137,6 +137,25 @@ final Map<String, Setup> _scenarios = {
     _select(s, Screen.device);
     s.selected = _laptop;
   },
+  'share': (s, r) {
+    s.screen = Screen.home;
+    s.sharing = _files();
+    s.sharingTo = _phone;
+  },
+  'share_unchosen': (s, r) {
+    s.screen = Screen.home;
+    s.sharing = _files().take(2).toList();
+    r['devices'] = [
+      _device(_phone, _longName, 'ios', true),
+      _device(_laptop, 'Рабочий', 'windows', true),
+      _device('c3', 'Планшет', 'android', false),
+    ];
+  },
+  'share_nobody': (s, r) {
+    s.screen = Screen.home;
+    s.sharing = _files().take(1).toList();
+    r['devices'] = [_device(_laptop, 'Рабочий', 'windows', false)];
+  },
   'chosen': (s, r) {
     _select(s, Screen.device);
     s.picked[_phone] = _files();

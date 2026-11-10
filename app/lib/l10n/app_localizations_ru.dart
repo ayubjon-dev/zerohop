@@ -752,5 +752,20 @@ class L10nRu extends L10n {
   String get shareNoDevices => 'Сначала добавьте устройство';
 
   @override
-  String get shareChooseDevice => 'Выберите устройство для этих файлов';
+  String get shareTitle => 'Куда отправить?';
+
+  @override
+  String shareMore(int count) {
+    return 'и ещё $count';
+  }
+
+  @override
+  String get shareChoose => 'Выберите устройство';
+
+  @override
+  String get shareAwaiting => 'Ждёт вашего разрешения';
+
+  @override
+  String get shareNobodyNearby =>
+      'Сейчас рядом нет ни одного устройства. Откройте Zerohop на том, куда отправляете, и оно станет доступно.';
 }
