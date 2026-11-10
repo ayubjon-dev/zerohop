@@ -1,5 +1,7 @@
 import Flutter
+import PhotosUI
 import UIKit
+import UniformTypeIdentifiers
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -19,6 +21,7 @@ import UIKit
 /// The parts of iOS that Flutter does not reach by itself.
 enum PlatformChannel {
   static func register(with messenger: FlutterBinaryMessenger) {
+    PhotoPicker.removeLeftovers()
     let channel = FlutterMethodChannel(name: "dev.zerohop/platform", binaryMessenger: messenger)
     channel.setMethodCallHandler(handle)
   }
@@ -41,6 +44,8 @@ enum PlatformChannel {
     case "keepAwake":
       Awake.shared.set(args?["on"] as? Bool ?? false)
       result(nil)
+    case "pickPhotos":
+      PhotoPicker.shared.pick(result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -110,6 +115,134 @@ enum FilesApp {
       let url = URL(string: "shareddocuments://" + file.dropFirst("file://".count))
     else { return }
     UIApplication.shared.open(url)
+  }
+}
+
+/// Lets the owner pick photos and videos without giving the app the rest of
+/// the library, so iOS asks no question. Each one is copied byte for byte,
+/// as iOS hands it over, into a folder of its own in the temporary folder.
+/// Dart removes the copy once it is sent or put aside. iOS hands over the
+/// file as stored, except that it writes in a date or time zone the library
+/// keeps apart from the file, which means a re-encoded copy.
+final class PhotoPicker: NSObject, PHPickerViewControllerDelegate,
+  UIAdaptivePresentationControllerDelegate
+{
+  static let shared = PhotoPicker()
+
+  /// Dart looks for this folder too when it removes a copy.
+  private static let folder = FileManager.default.temporaryDirectory
+    .appendingPathComponent("Photos", isDirectory: true)
+
+  private var pending: FlutterResult?
+
+  /// Nothing picked survives a restart, so copies from an earlier run only
+  /// take up room.
+  static func removeLeftovers() {
+    try? FileManager.default.removeItem(at: folder)
+  }
+
+  func pick(_ result: @escaping FlutterResult) {
+    guard pending == nil, let top = Self.topController() else {
+      return result(FlutterError(code: "unavailable", message: nil, details: nil))
+    }
+    var config = PHPickerConfiguration()
+    config.filter = .any(of: [.images, .videos])
+    config.selectionLimit = 0
+    config.selection = .ordered
+    // As stored, never a copy converted for compatibility (protocol 10.5).
+    config.preferredAssetRepresentationMode = .current
+    let picker = PHPickerViewController(configuration: config)
+    picker.delegate = self
+    picker.presentationController?.delegate = self
+    pending = result
+    top.present(picker, animated: true)
+  }
+
+  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+    picker.dismiss(animated: true)
+    guard let result = pending else { return }
+    pending = nil
+    Self.copy(results.map(\.itemProvider)) { paths, failed in
+      result(["paths": paths, "failed": failed])
+    }
+  }
+
+  /// Swiping the picker away cancels it too.
+  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+    guard let result = pending else { return }
+    pending = nil
+    result(["paths": [String](), "failed": 0])
+  }
+
+  /// Keeps the order the owner picked in. iOS downloads an original held
+  /// only in iCloud before it hands it over; one it cannot get is counted
+  /// as failed, never replaced.
+  private static func copy(
+    _ providers: [NSItemProvider], done: @escaping ([String], Int) -> Void
+  ) {
+    var paths = [String?](repeating: nil, count: providers.count)
+    var failed = 0
+    let lock = NSLock()
+    let group = DispatchGroup()
+    for (index, provider) in providers.enumerated() {
+      guard let type = original(provider) else {
+        lock.lock()
+        failed += 1
+        lock.unlock()
+        continue
+      }
+      let name = provider.suggestedName
+      group.enter()
+      _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { lent, _ in
+        // The file is lent only until this returns.
+        let path = lent.flatMap { keep($0, name: name, type: type) }
+        lock.lock()
+        if let path { paths[index] = path } else { failed += 1 }
+        lock.unlock()
+        group.leave()
+      }
+    }
+    group.notify(queue: .main) { done(paths.compactMap { $0 }, failed) }
+  }
+
+  /// The photo or video itself, offered first among its forms. A Live
+  /// Photo's motion is a separate part and stays behind.
+  private static func original(_ provider: NSItemProvider) -> UTType? {
+    provider.registeredTypeIdentifiers.lazy.compactMap { UTType($0) }.first {
+      ($0.conforms(to: .image) || $0.conforms(to: .movie)) && !$0.conforms(to: .livePhoto)
+    }
+  }
+
+  /// A folder of its own lets two photos with the same name travel together.
+  private static func keep(_ lent: URL, name: String?, type: UTType) -> String? {
+    let ext = lent.pathExtension.isEmpty ? type.preferredFilenameExtension ?? "" : lent.pathExtension
+    var base = (name ?? "").replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "\0", with: "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if base.isEmpty || base == "." || base == ".." {
+      base = lent.deletingPathExtension().lastPathComponent
+    }
+    let file =
+      ext.isEmpty || (base as NSString).pathExtension.lowercased() == ext.lowercased()
+      ? base : "\(base).\(ext)"
+    let own = folder.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let copy = own.appendingPathComponent(file, isDirectory: false)
+    do {
+      try FileManager.default.createDirectory(at: own, withIntermediateDirectories: true)
+      try FileManager.default.copyItem(at: lent, to: copy)
+      return copy.path
+    } catch {
+      try? FileManager.default.removeItem(at: own)
+      return nil
+    }
+  }
+
+  private static func topController() -> UIViewController? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let windows = scenes.flatMap(\.windows)
+    var top = (windows.first { $0.isKeyWindow } ?? windows.first)?.rootViewController
+    while let presented = top?.presentedViewController { top = presented }
+    return top
   }
 }
 

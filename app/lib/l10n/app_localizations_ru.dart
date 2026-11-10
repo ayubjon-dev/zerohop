@@ -77,6 +77,19 @@ class L10nRu extends L10n {
   String get addFiles => 'Добавить файлы';
 
   @override
+  String get addFilesShort => 'Файлы';
+
+  @override
+  String get choosePhotos => 'Фото';
+
+  @override
+  String get photosLoading => 'Загрузка…';
+
+  @override
+  String get photosFailed =>
+      'Часть фото и видео не удалось загрузить, они не добавлены';
+
+  @override
   String get clear => 'Очистить';
 
   @override

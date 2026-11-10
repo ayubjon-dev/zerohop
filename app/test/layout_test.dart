@@ -141,6 +141,16 @@ final Map<String, Setup> _scenarios = {
     _select(s, Screen.device);
     s.picked[_phone] = _files();
   },
+  'drop_photos': (s, r) => _select(s, Screen.device),
+  'chosen_photos': (s, r) {
+    _select(s, Screen.device);
+    s.picked[_phone] = _files();
+  },
+  'chosen_photos_loading': (s, r) {
+    _select(s, Screen.device);
+    s.picked[_phone] = _files();
+    s.loadingPhotos = true;
+  },
   'waiting': (s, r) {
     _select(s, Screen.device);
     r['transfers'] = [_transfer(0)];
@@ -304,6 +314,9 @@ const _clipboardSupport = {
   'clip_unsupported': ClipboardSupport.none,
 };
 
+/// Scenarios rendered as on iOS, with the button for the photo library.
+const _withPhotos = {'drop_photos', 'chosen_photos', 'chosen_photos_loading'};
+
 const _sizes = {
   'wide': Size(1280, 800),
   'window': Size(780, 620),
@@ -327,6 +340,7 @@ Future<void> _render(
     discovery: Discovery(core),
     platform: PlatformBridge(
       clipboard: _clipboardSupport[name] ?? ClipboardSupport.automatic,
+      photos: _withPhotos.contains(name),
     ),
   );
   final raw = _base(theme, language);
