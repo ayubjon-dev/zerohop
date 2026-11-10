@@ -656,6 +656,10 @@ struct OpenFile {
     hasher: blake3::Hasher,
     hashes: Vec<[u8; 32]>,
     mtime_ms: Option<i64>,
+    #[cfg_attr(
+        not(any(target_vendor = "apple", windows)),
+        expect(dead_code, reason = "only macOS and Windows can set a creation time")
+    )]
     created_ms: Option<i64>,
 }
 
