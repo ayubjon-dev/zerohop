@@ -16,4 +16,10 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string);
 // encoded in UTF-8. Returns an empty std::vector<std::string> on failure.
 std::vector<std::string> GetCommandLineArguments();
 
+// The full path of zerohop.exe, or an empty string if Windows will not say.
+std::wstring ExecutablePath();
+
+// True when Windows shows its menus in Russian.
+bool PrefersRussian();
+
 #endif  // RUNNER_UTILS_H_

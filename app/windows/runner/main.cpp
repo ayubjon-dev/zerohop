@@ -3,8 +3,11 @@
 #include <windows.h>
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "flutter_window.h"
+#include "shared_paths.h"
 #include "utils.h"
 
 namespace {
@@ -26,11 +29,19 @@ std::wstring ProfileName() {
   return name;
 }
 
-// Shows the copy that is already running.
-void ShowRunningCopy(const std::wstring& title) {
+// Shows the copy that is already running, with any files from Send to.
+void HandOverToRunningCopy(const std::wstring& title,
+                           const std::vector<std::wstring>& paths) {
   HWND running = ::FindWindowW(kZerohopWindowClass, title.c_str());
   if (running == nullptr) {
     return;
+  }
+  // The owner started this copy, so the running one may come forward.
+  DWORD process = 0;
+  ::GetWindowThreadProcessId(running, &process);
+  ::AllowSetForegroundWindow(process);
+  if (!paths.empty()) {
+    SendPathsTo(running, paths);
   }
   ::ShowWindow(running, ::IsIconic(running) ? SW_RESTORE : SW_SHOW);
   ::SetForegroundWindow(running);
@@ -71,12 +82,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   const std::wstring title = profile.empty()
                                  ? std::wstring(L"Zerohop")
                                  : L"Zerohop (" + profile + L")";
+  CommandLine launch = ReadCommandLine();
 
   // One copy per profile: a second launch only brings the first forward.
   const std::wstring lock_name = L"Local\\dev.zerohop.app." + profile;
   HANDLE instance_lock = ::CreateMutexW(nullptr, FALSE, lock_name.c_str());
   if (instance_lock != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS) {
-    ShowRunningCopy(title);
+    // A start by Windows at sign-in leaves a running copy alone.
+    if (!launch.background) {
+      HandOverToRunningCopy(title, launch.paths);
+    }
     ::CloseHandle(instance_lock);
     return EXIT_SUCCESS;
   }
@@ -98,8 +113,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
+  LaunchOptions options;
+  options.title = title;
+  options.profile = profile;
+  options.background = launch.background;
+  options.paths = std::move(launch.paths);
+
   // The same size as the Mac window.
-  FlutterWindow window(project);
+  FlutterWindow window(project, std::move(options));
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1120, 760);
   if (!window.Create(title, origin, size)) {
@@ -107,6 +128,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
   FitToWorkArea(window.GetHandle());
   window.SetQuitOnClose(true);
+
+  // Test profiles are left out: Send to would start the everyday copy.
+  if (profile.empty()) {
+    AddSendToEntry();
+  }
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {

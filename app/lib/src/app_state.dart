@@ -55,8 +55,14 @@ class AppState extends ChangeNotifier {
   bool _keptAwake = false;
   bool _coreStarted = false;
   List<String>? _sharedWaiting;
-  List<String>? _sharedForChoice;
-  bool _clipboardOn = false;
+
+  /// Files handed over by another app or by Send to, while the owner decides
+  /// where they go. Nothing leaves until the owner presses Send.
+  List<Picked>? sharing;
+
+  /// The device the shared files would go to.
+  String? sharingTo;
+  bool? _clipboardOn;
   bool? _menuEntry;
   DateTime _startedAt = DateTime.now();
   static const _discoveryGrace = Duration(seconds: 10);
@@ -101,7 +107,7 @@ class AppState extends ChangeNotifier {
               notifyListeners();
             },
             onSend: _sendFromSystem,
-            onShared: _receiveShared,
+            onShared: receiveShared,
           );
         }
       }
@@ -236,7 +242,7 @@ class AppState extends ChangeNotifier {
     if (_sharedWaiting != null) {
       final waiting = _sharedWaiting!;
       _sharedWaiting = null;
-      _receiveShared(waiting);
+      receiveShared(waiting);
     }
     unawaited(_syncClipboard(next.clipboard));
     unawaited(_syncMenuEntry(next));
@@ -245,7 +251,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> _syncClipboard(bool enabled) async {
     if (platform.clipboard == ClipboardSupport.none) return;
-    if (enabled == _clipboardOn) return;
+    // Windows may have been started out of sight at sign-in, so it hears the
+    // first answer even when it is off. Elsewhere everything starts off.
+    final known = _clipboardOn ?? (Platform.isWindows ? null : false);
+    if (enabled == known) return;
     _clipboardOn = enabled;
     await platform.setBackground(enabled);
     if (platform.clipboard == ClipboardSupport.automatic) {
@@ -264,26 +273,72 @@ class AppState extends ChangeNotifier {
   }
 
   /// Files shared from another app. Nothing leaves until the owner taps Send.
-  void _receiveShared(List<String> paths) {
+  void receiveShared(List<String> paths) {
     final current = snapshot;
     if (current == null) {
-      _sharedWaiting = paths;
+      (_sharedWaiting ??= []).addAll(paths);
       return;
     }
-    final devices = current.devices;
-    if (devices.isEmpty) {
+    if (current.devices.isEmpty) {
       _discard(
         paths.map((p) => Picked(path: p, name: p, isDirectory: false)).toList(),
       );
       show((t) => t.shareNoDevices);
-    } else if (devices.length == 1) {
-      addPaths(devices.first.id, paths);
-      openDevice(devices.first.id);
-    } else {
-      _sharedForChoice = paths;
-      open(Screen.home);
-      show((t) => t.shareChooseDevice);
+      return;
     }
+    final list = sharing ??= [];
+    for (final path in paths) {
+      if (list.any((p) => p.path == path)) continue;
+      list.add(_pick(path));
+    }
+    if (current.deviceById(sharingTo) == null) {
+      sharingTo = _likelyTarget(current.devices);
+    }
+    notifyListeners();
+  }
+
+  /// The only device there is, or the only one that can take files now.
+  static String? _likelyTarget(List<Device> devices) {
+    if (devices.length == 1) return devices.first.id;
+    final ready = devices.where(canReceive).toList();
+    return ready.length == 1 ? ready.first.id : null;
+  }
+
+  /// Whether files can be sent to |device| right now.
+  static bool canReceive(Device device) =>
+      device.nearby && !device.awaitingConfirmation;
+
+  void chooseShareTarget(String device) {
+    sharingTo = device;
+    notifyListeners();
+  }
+
+  void cancelShared() {
+    _discard(sharing ?? const []);
+    sharing = null;
+    sharingTo = null;
+    notifyListeners();
+  }
+
+  /// Puts the shared files on the chosen device's page and sends them.
+  void sendShared() {
+    final items = sharing;
+    final device = snapshot?.deviceById(sharingTo);
+    if (items == null || device == null || !canReceive(device)) return;
+    sharing = null;
+    sharingTo = null;
+    final list = picked.putIfAbsent(device.id, () => []);
+    // Files picked earlier for this device, or a transfer still on its way,
+    // would be mixed into this send. The owner then sees everything together
+    // and presses Send on the device's page.
+    final alone = list.isEmpty && snapshot?.transferFor(device.id) == null;
+    for (final item in items) {
+      if (!list.any((p) => p.path == item.path)) list.add(item);
+    }
+    ended.remove(device.id);
+    selected = device.id;
+    open(Screen.device);
+    if (alone) unawaited(send(device.id));
   }
 
   /// Sends a copy made while the interface was not open. Just after starting
@@ -420,11 +475,6 @@ class AppState extends ChangeNotifier {
   }
 
   void openDevice(String id) {
-    final shared = _sharedForChoice;
-    if (shared != null) {
-      _sharedForChoice = null;
-      addPaths(id, shared);
-    }
     selected = id;
     open(Screen.device);
   }
@@ -449,21 +499,25 @@ class AppState extends ChangeNotifier {
     final list = picked.putIfAbsent(device, () => []);
     for (final path in paths) {
       if (list.any((p) => p.path == path)) continue;
-      final isDirectory = FileSystemEntity.isDirectorySync(path);
-      final name = path
-          .split(Platform.pathSeparator)
-          .lastWhere((part) => part.isNotEmpty, orElse: () => path);
-      final item = Picked(path: path, name: name, isDirectory: isDirectory);
-      list.add(item);
-      if (isDirectory) {
-        unawaited(_measure(item));
-      } else {
-        item.size = File(path).statSync().size;
-      }
+      list.add(_pick(path));
     }
     ended.remove(device);
     dragging = false;
     notifyListeners();
+  }
+
+  Picked _pick(String path) {
+    final isDirectory = FileSystemEntity.isDirectorySync(path);
+    final name = path
+        .split(Platform.pathSeparator)
+        .lastWhere((part) => part.isNotEmpty, orElse: () => path);
+    final item = Picked(path: path, name: name, isDirectory: isDirectory);
+    if (isDirectory) {
+      unawaited(_measure(item));
+    } else {
+      item.size = File(path).statSync().size;
+    }
+    return item;
   }
 
   Future<void> _measure(Picked item) async {
@@ -532,6 +586,10 @@ class AppState extends ChangeNotifier {
 
   /// Handles the system's back gesture. False means leave the app.
   bool goBack() {
+    if (sharing != null) {
+      cancelShared();
+      return true;
+    }
     final pairing = snapshot?.pairing;
     if (pairing != null && pairing.phase != 'waiting') return true;
     switch (screen) {

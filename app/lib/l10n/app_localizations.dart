@@ -1333,11 +1333,35 @@ abstract class L10n {
   /// **'Add a device first'**
   String get shareNoDevices;
 
-  /// No description provided for @shareChooseDevice.
+  /// No description provided for @shareTitle.
   ///
   /// In en, this message translates to:
-  /// **'Choose a device for these files'**
-  String get shareChooseDevice;
+  /// **'Send to which device?'**
+  String get shareTitle;
+
+  /// No description provided for @shareMore.
+  ///
+  /// In en, this message translates to:
+  /// **'and {count} more'**
+  String shareMore(int count);
+
+  /// No description provided for @shareChoose.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a device'**
+  String get shareChoose;
+
+  /// No description provided for @shareAwaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for your approval'**
+  String get shareAwaiting;
+
+  /// No description provided for @shareNobodyNearby.
+  ///
+  /// In en, this message translates to:
+  /// **'None of your devices is nearby right now. Open Zerohop on the one you are sending to and it will become available.'**
+  String get shareNobodyNearby;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

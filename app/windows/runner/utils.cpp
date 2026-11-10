@@ -41,6 +41,29 @@ std::vector<std::string> GetCommandLineArguments() {
   return command_line_arguments;
 }
 
+std::wstring ExecutablePath() {
+  // Paths can be longer than MAX_PATH, up to the limit of the wide functions.
+  constexpr size_t kLongestPath = 32768;
+  std::wstring path(MAX_PATH, L'\0');
+  while (path.size() <= kLongestPath) {
+    const DWORD length = ::GetModuleFileNameW(
+        nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (length == 0) {
+      return std::wstring();
+    }
+    if (length < path.size()) {
+      path.resize(length);
+      return path;
+    }
+    path.resize(path.size() * 2);
+  }
+  return std::wstring();
+}
+
+bool PrefersRussian() {
+  return PRIMARYLANGID(::GetUserDefaultUILanguage()) == LANG_RUSSIAN;
+}
+
 std::string Utf8FromUtf16(const wchar_t* utf16_string) {
   if (utf16_string == nullptr) {
     return std::string();
