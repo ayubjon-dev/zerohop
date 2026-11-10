@@ -757,6 +757,12 @@ abstract class L10n {
   /// **'Downloads'**
   String get downloadsFolder;
 
+  /// No description provided for @filesAppFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Files › Zerohop'**
+  String get filesAppFolder;
+
   /// No description provided for @change.
   ///
   /// In en, this message translates to:

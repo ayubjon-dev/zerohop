@@ -428,6 +428,9 @@ class L10nEn extends L10n {
   String get downloadsFolder => 'Downloads';
 
   @override
+  String get filesAppFolder => 'Files › Zerohop';
+
+  @override
   String get change => 'Change';
 
   @override

@@ -21,7 +21,7 @@ Private file transfer between your own devices, directly over your local network
 | macOS | Works |
 | Android | Works. Sending the clipboard takes one tap, because Android does not let apps read it in the background |
 | Windows | Works, including the shared clipboard, background mode and Send to. No installer yet |
-| iPhone and iPad | Planned |
+| iPhone and iPad | In progress. Sending and receiving files works in the iOS Simulator; not yet tried on a real iPhone. Files arrive only while the app is open, because iOS does not let it listen in the background. No shared clipboard yet |
 
 There are no published releases yet. To try it, build it from source.
 
@@ -31,7 +31,7 @@ There are no published releases yet. To try it, build it from source.
 - All traffic uses TLS 1.3 with a post-quantum hybrid key exchange. There is no unencrypted mode and no web page.
 - Names from the network are validated and files can only land inside your receive folder. Programs can be held back for your approval.
 - Each segment of a file is verified with BLAKE3 before it is accepted.
-- The device key is encrypted on disk with a secret held by the macOS keychain, the Android Keystore or Windows data protection (DPAPI).
+- The device key is encrypted on disk with a secret held by the macOS or iOS keychain, the Android Keystore or Windows data protection (DPAPI).
 - Zerohop keeps clipboard contents in memory only, removes them after two minutes, and never writes them to disk or to the transfer history. Content marked secret by password managers is skipped.
 
 ### Known limits
@@ -51,12 +51,14 @@ You need Rust (stable), Flutter 3.47, and for each target:
 - **macOS:** Xcode
 - **Android:** JDK 21 and the Android SDK with NDK 28.2
 - **Windows:** Visual Studio 2022 with the “Desktop development with C++” workload
+- **iPhone and iPad:** Xcode with the iOS platform, and the Rust targets `aarch64-apple-ios` and `aarch64-apple-ios-sim`. `flutter build ios --simulator` also needs `x86_64-apple-ios`
 
 ```bash
 cd app
 flutter build macos --release
 flutter build apk --release --target-platform android-arm,android-arm64
 flutter build windows --release
+flutter run -d "iPhone 17 Pro"   # in the iOS Simulator
 ```
 
 There is also a command-line tool:

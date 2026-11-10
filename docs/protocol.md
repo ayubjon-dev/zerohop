@@ -69,7 +69,8 @@ A device generates a fresh key pair each time it creates or joins a circle. Devi
 
 | Platform | Storage |
 |---|---|
-| iOS, macOS | Keychain, this-device-only, excluded from iCloud sync |
+| iOS | Encrypted with a secret kept in the keychain as this-device-only, so it is never synced and cannot be restored onto another device |
+| macOS | Encrypted with a secret kept in the login keychain, which is not synced |
 | Android | Encrypted under a key held in Android Keystore, excluded from backup |
 | Windows | Protected with DPAPI for the current user, in the local profile rather than the roaming one |
 

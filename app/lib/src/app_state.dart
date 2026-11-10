@@ -175,6 +175,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<String> _defaultFolder(String? profile) async {
+    // The Files app already shows the app's documents under its own name.
+    if (Platform.isIOS && profile == null) {
+      return (await getApplicationDocumentsDirectory()).path;
+    }
     final base =
         await platform.downloadsBase() ??
         (await getDownloadsDirectory())?.path ??
@@ -547,21 +551,37 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// On Android the file picker hands over private copies. They take up room
-  /// until removed, and each sits alone in a folder made for it.
+  /// On Android and iOS the file picker hands over private copies. They take
+  /// up room until removed. On Android each sits alone in a folder made for
+  /// it in the cache, while iOS puts them all side by side in the system's
+  /// temporary folder.
   void _discard(List<Picked> items) {
-    if (!Platform.isAndroid) return;
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     unawaited(() async {
-      final cache = (await getTemporaryDirectory()).path;
+      final ios = Platform.isIOS;
+      final cache = ios
+          ? _realPath(Directory.systemTemp.path)
+          : (await getTemporaryDirectory()).path;
       for (final item in items) {
-        if (!item.path.startsWith('$cache/')) continue;
+        final path = ios ? _realPath(item.path) : item.path;
+        if (!path.startsWith('$cache/')) continue;
         try {
-          await File(item.path).parent.delete(recursive: true);
+          final copy = File(path);
+          await (ios ? copy : copy.parent).delete(recursive: true);
         } on FileSystemException {
           // Only a leftover in the cache, which the system can clear.
         }
       }
     }());
+  }
+
+  /// The same path with links resolved, as iOS reaches one folder by two.
+  static String _realPath(String path) {
+    try {
+      return File(path).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      return path;
+    }
   }
 
   /// Handles the system's back gesture. False means leave the app.
