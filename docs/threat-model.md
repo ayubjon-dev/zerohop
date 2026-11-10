@@ -181,6 +181,7 @@ These are design-level comparisons. LocalSend solves a broader problem, acceptin
 | 2026-11-09 | The Android build on an Android 16 emulator, receiving from the command-line tool into the shared Download folder | Found and fixed: that storage has no file locks, so every transfer failed, and the sender was given no reason; received files were invisible to other apps until the system was told about them. Discovery cannot be tested on an emulator. |
 | 2026-11-09 | `cargo audit` against the RustSec database | No known vulnerabilities in 181 dependencies at that date. |
 | 2026-11-11 | The iOS build in the iOS Simulator (iOS 26.1) on a Mac, paired over the real network with a separate copy of the Mac app, with files sent both ways | Found and fixed: the core did not build for iOS, because it used a part of the standard library that exists only on macOS; download marks, which iOS does not have, were attempted on every Apple system; copies made by the iOS file picker were never removed. Discovery, pairing, the keychain secret across a restart, and byte-identical files in both directions worked. The local network permission prompt, keeping the screen on during a transfer, and a real iPhone were not checked. |
+| 2026-11-11 | Sending from the iOS photo library in the same setup, through the system photo picker in its `current` mode | A HEIC photo, an HEVC video, a PNG screenshot and one JPEG arrived byte for byte, with no question about photo access. Four sample JPEGs whose stored time zone in the library differed from their EXIF arrived re-encoded: the picker wrote the library's date into them and compressed the image again, and offered no other form of them. Recorded under "Not implemented yet". Copies in the temporary folder were removed after sending. An original held only in iCloud and a real iPhone were not checked. |
 
 These are checks performed during development, not an independent audit.
 
@@ -191,7 +192,7 @@ The design above describes more than the first version of the app does today:
 - Removing a device does not ask the owner to authenticate first (T-33).
 - The clipboard (section 5.4) exists on macOS, Android and Windows, for text and pictures. Copied files and iPhone are not built, and neither is QR pairing.
 - On Android, sending a copy needs a tap: Android lets only the app in front or the keyboard read the clipboard.
-- On iPhone and iPad, files arrive only while Zerohop is open, because iOS does not let it keep listening in the background. Files can be picked only through the Files app, not from the photo library, and folders cannot be picked.
+- On iPhone and iPad, files arrive only while Zerohop is open, because iOS does not let it keep listening in the background. Folders cannot be picked. Photos and videos from the photo library travel as the library holds them, with two exceptions: a Live Photo goes as its still image only, without the moving part, and when the library keeps a different date or time zone for a photo than the file itself says, iOS hands over a re-encoded copy with the library's values written in. Without access to the whole library the app cannot tell such a copy apart, so the owner is not told (protocol section 10.5).
 - Journals are limited by age only, not yet to 64 MiB in total.
 
 ## 9. Reporting vulnerabilities

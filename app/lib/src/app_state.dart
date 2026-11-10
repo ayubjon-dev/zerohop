@@ -49,6 +49,10 @@ class AppState extends ChangeNotifier {
   Message? toast;
   bool dragging = false;
   final picked = <String, List<Picked>>{};
+
+  /// True while iOS hands over the photos and videos just picked, which
+  /// takes a while for large videos and for originals held in iCloud.
+  bool loadingPhotos = false;
   final ended = <String, Ended>{};
   final _known = <String>{};
   Timer? _toastTimer;
@@ -490,6 +494,24 @@ class AppState extends ChangeNotifier {
     addPaths(device, files.map((f) => f.path));
   }
 
+  /// The owner hears about any photo or video iOS could not hand over,
+  /// rather than finding it silently left out.
+  Future<void> choosePhotos(String device) async {
+    if (loadingPhotos) return;
+    loadingPhotos = true;
+    notifyListeners();
+    try {
+      final result = await platform.pickPhotos();
+      if (result.failed > 0) show((t) => t.photosFailed);
+      addPaths(device, result.paths);
+    } on PlatformException {
+      show((t) => t.photosFailed);
+    } finally {
+      loadingPhotos = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> chooseFolder(String device) async {
     final path = await getDirectoryPath();
     if (path != null) addPaths(device, [path]);
@@ -554,7 +576,8 @@ class AppState extends ChangeNotifier {
   /// On Android and iOS the file picker hands over private copies. They take
   /// up room until removed. On Android each sits alone in a folder made for
   /// it in the cache, while iOS puts them all side by side in the system's
-  /// temporary folder.
+  /// temporary folder. Copies from the iOS photo library each sit alone in
+  /// a folder of their own again, under [PlatformBridge.photosFolder].
   void _discard(List<Picked> items) {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     unawaited(() async {
@@ -562,12 +585,14 @@ class AppState extends ChangeNotifier {
       final cache = ios
           ? _realPath(Directory.systemTemp.path)
           : (await getTemporaryDirectory()).path;
+      final photos = '$cache/${PlatformBridge.photosFolder}';
       for (final item in items) {
         final path = ios ? _realPath(item.path) : item.path;
         if (!path.startsWith('$cache/')) continue;
+        final copy = File(path);
+        final alone = !ios || copy.parent.parent.path == photos;
         try {
-          final copy = File(path);
-          await (ios ? copy : copy.parent).delete(recursive: true);
+          await (alone ? copy.parent : copy).delete(recursive: true);
         } on FileSystemException {
           // Only a leftover in the cache, which the system can clear.
         }

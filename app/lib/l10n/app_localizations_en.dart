@@ -77,6 +77,19 @@ class L10nEn extends L10n {
   String get addFiles => 'Add files';
 
   @override
+  String get addFilesShort => 'Files';
+
+  @override
+  String get choosePhotos => 'Photos';
+
+  @override
+  String get photosLoading => 'Loading…';
+
+  @override
+  String get photosFailed =>
+      'Some photos or videos could not be loaded and were not added';
+
+  @override
   String get clear => 'Clear';
 
   @override

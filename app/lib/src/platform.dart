@@ -12,9 +12,12 @@ const _channel = MethodChannel('dev.zerohop/platform');
 enum ClipboardSupport { none, automatic, oneTap }
 
 class PlatformBridge {
-  const PlatformBridge({ClipboardSupport? clipboard}) : _clipboard = clipboard;
+  const PlatformBridge({ClipboardSupport? clipboard, bool? photos})
+    : _clipboard = clipboard,
+      _photos = photos;
 
   final ClipboardSupport? _clipboard;
+  final bool? _photos;
 
   bool get _isMac => Platform.isMacOS;
   bool get _isAndroid => Platform.isAndroid;
@@ -39,6 +42,27 @@ class PlatformBridge {
 
   /// Phones have no way to hand over a folder as a path.
   bool get canPickFolders => !_isAndroid && !Platform.isIOS;
+
+  /// iOS keeps photos and videos apart from the files the Files app shows.
+  bool get canPickPhotos => _photos ?? Platform.isIOS;
+
+  /// Lets the owner pick photos and videos. Each arrives as a copy of what
+  /// iOS hands over, in a folder of its own under [photosFolder]. Failed
+  /// counts the ones iOS could not hand over, such as an original held only
+  /// in iCloud while offline.
+  Future<({List<String> paths, int failed})> pickPhotos() async {
+    final picked = await _channel.invokeMapMethod<String, dynamic>(
+      'pickPhotos',
+    );
+    return (
+      paths: List<String>.from(picked?['paths'] as List? ?? const []),
+      failed: picked?['failed'] as int? ?? 0,
+    );
+  }
+
+  /// The folder within the system's temporary folder that holds the copies
+  /// of picked photos and videos.
+  static const photosFolder = 'Photos';
 
   /// Remembers access to a folder the owner picked, across restarts.
   Future<String?> bookmark(String path) async {

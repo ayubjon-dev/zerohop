@@ -368,6 +368,8 @@ class _DropPanel extends StatelessWidget {
                     kind: ZButtonKind.primary,
                     onPressed: () => state.chooseFiles(device.id),
                   ),
+                  if (state.platform.canPickPhotos)
+                    _PhotosButton(state: state, device: device),
                   if (state.platform.canPickFolders)
                     ZButton(
                       label: t.chooseFolder,
@@ -379,6 +381,30 @@ class _DropPanel extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Picks from the photo library, which the Files app does not show.
+class _PhotosButton extends StatelessWidget {
+  const _PhotosButton({
+    required this.state,
+    required this.device,
+    this.expand = false,
+  });
+
+  final AppState state;
+  final Device device;
+  final bool expand;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = L10n.of(context);
+    final loading = state.loadingPhotos;
+    return ZButton(
+      label: loading ? t.photosLoading : t.choosePhotos,
+      expand: expand,
+      onPressed: loading ? null : () => state.choosePhotos(device.id),
     );
   }
 }
@@ -471,6 +497,8 @@ class _ChosenPanel extends StatelessWidget {
                       label: t.addFiles,
                       onPressed: () => state.chooseFiles(device.id),
                     ),
+                    if (state.platform.canPickPhotos)
+                      _PhotosButton(state: state, device: device),
                     ZButton(
                       label: t.clear,
                       onPressed: () => state.clearPicked(device.id),
@@ -491,11 +519,24 @@ class _ChosenPanel extends StatelessWidget {
               children: [
                 Expanded(
                   child: ZButton(
-                    label: t.addFiles,
+                    // Next to the photos button the long label has no room.
+                    label: state.platform.canPickPhotos
+                        ? t.addFilesShort
+                        : t.addFiles,
                     expand: true,
                     onPressed: () => state.chooseFiles(device.id),
                   ),
                 ),
+                if (state.platform.canPickPhotos) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _PhotosButton(
+                      state: state,
+                      device: device,
+                      expand: true,
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 8),
                 ZButton(
                   label: t.clear,

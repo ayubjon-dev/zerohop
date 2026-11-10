@@ -223,6 +223,30 @@ abstract class L10n {
   /// **'Add files'**
   String get addFiles;
 
+  /// No description provided for @addFilesShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Files'**
+  String get addFilesShort;
+
+  /// No description provided for @choosePhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get choosePhotos;
+
+  /// No description provided for @photosLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get photosLoading;
+
+  /// No description provided for @photosFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Some photos or videos could not be loaded and were not added'**
+  String get photosFailed;
+
   /// No description provided for @clear.
   ///
   /// In en, this message translates to:
