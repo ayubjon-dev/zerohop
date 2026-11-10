@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import 'windows_images.dart';
+
 const _channel = MethodChannel('dev.zerohop/platform');
 
 /// How this system lets copied content leave it.
@@ -16,17 +18,18 @@ class PlatformBridge {
 
   bool get _isMac => Platform.isMacOS;
   bool get _isAndroid => Platform.isAndroid;
+  bool get _isWindows => Platform.isWindows;
 
   ClipboardSupport get clipboard =>
       _clipboard ??
-      (_isMac
+      (_isMac || _isWindows
           ? ClipboardSupport.automatic
           : _isAndroid
           ? ClipboardSupport.oneTap
           : ClipboardSupport.none);
 
   /// Systems whose key store protects the device key on disk.
-  bool get sealsDeviceKey => _isMac || _isAndroid || Platform.isWindows;
+  bool get sealsDeviceKey => _isMac || _isAndroid || _isWindows;
 
   /// The secret the keychain or the Android Keystore keeps for sealing the
   /// device key. On Windows the core asks the system itself.
@@ -66,7 +69,7 @@ class PlatformBridge {
   Future<void> showFolder(String path) async {
     if (_isMac || _isAndroid) {
       await _channel.invokeMethod<void>('show', {'path': path});
-    } else if (Platform.isWindows) {
+    } else if (_isWindows) {
       // Explorer opens a different folder when given forward slashes.
       await Process.run('explorer', [path.replaceAll('/', r'\')]);
     }
@@ -81,12 +84,13 @@ class PlatformBridge {
 
   /// Brings the window forward when someone needs an answer.
   Future<void> activate() async {
-    if (_isMac || Platform.isWindows) {
+    if (_isMac || _isWindows) {
       await _channel.invokeMethod<void>('activate');
     }
   }
 
-  /// Hears about copies and permission changes on systems that report them.
+  /// Hears about copies and permission changes on systems that report them,
+  /// and about files handed over from other apps.
   void listenToClipboard({
     required void Function(Map<String, dynamic> copied) onCopied,
     required void Function(String access) onAccess,
@@ -97,7 +101,7 @@ class PlatformBridge {
       final arguments = Map<String, dynamic>.from(call.arguments as Map);
       switch (call.method) {
         case 'clipboardCopied':
-          onCopied(arguments);
+          onCopied(await _fromSystem(arguments));
         case 'clipboardAccess':
           onAccess(arguments['state'] as String);
         case 'clipboardSend':
@@ -111,7 +115,9 @@ class PlatformBridge {
 
   /// Says that requests from outside the interface can now be answered.
   Future<void> clipboardReady() async {
-    if (_isAndroid) await _channel.invokeMethod<void>('clipboardReady');
+    if (_isAndroid || _isWindows) {
+      await _channel.invokeMethod<void>('clipboardReady');
+    }
   }
 
   /// Starts or stops working with nothing on the screen.
@@ -146,12 +152,58 @@ class PlatformBridge {
     final copied = await _channel.invokeMapMethod<String, dynamic>(
       'clipboardRead',
     );
-    return copied ?? const {'state': 'empty'};
+    return _fromSystem(copied ?? const {'state': 'empty'});
   }
 
   /// Puts what arrived on the system clipboard for its lifetime.
-  Future<void> applyClipboard(Map<String, dynamic> clip) =>
-      _channel.invokeMethod<void>('clipboardApply', clip);
+  Future<void> applyClipboard(Map<String, dynamic> clip) async {
+    final ready = _isWindows && clip['format'] != 'text'
+        ? await _forWindows(clip)
+        : clip;
+    if (ready != null) {
+      await _channel.invokeMethod<void>('clipboardApply', ready);
+    }
+  }
+
+  /// Windows hands over pictures as its own bitmaps, and a copied PNG can
+  /// carry stray bytes after the image. Either way a fresh PNG leaves.
+  Future<Map<String, dynamic>> _fromSystem(Map<String, dynamic> copied) async {
+    final format = copied['format'];
+    final data = copied['data'];
+    if (!_isWindows ||
+        copied['state'] != 'ok' ||
+        (format != 'png' && format != 'dib') ||
+        data is! Uint8List) {
+      return copied;
+    }
+    try {
+      final png = format == 'dib'
+          ? await pngFromDib(data)
+          : await pngFromImage(data);
+      if (png == null) return const {'state': 'empty'};
+      if (png.length > maxClipBytes) return const {'state': 'too_large'};
+      return {'state': 'ok', 'format': 'png', 'data': png};
+    } on PictureTooLarge {
+      return const {'state': 'too_large'};
+    }
+  }
+
+  /// Many Windows programs paste only the system's own bitmap, and others
+  /// prefer PNG, so both go on the clipboard. Null when it is not a picture.
+  Future<Map<String, dynamic>?> _forWindows(Map<String, dynamic> clip) async {
+    final data = clip['data'];
+    if (data is! Uint8List) return null;
+    final isPng = clip['format'] == 'png';
+    try {
+      final dib = await dibFromImage(data);
+      final png = isPng ? data : await pngFromImage(data);
+      if (png == null || dib == null) return null;
+      return {...clip, 'format': 'png', 'data': png, 'dib': dib};
+    } on PictureTooLarge {
+      // Programs that read PNG can still take it as it came.
+      return isPng ? {...clip, 'dib': null} : null;
+    }
+  }
 
   /// Opens the page of System Settings that controls clipboard access.
   Future<void> openClipboardSettings() =>

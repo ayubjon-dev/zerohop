@@ -56,7 +56,7 @@ class AppState extends ChangeNotifier {
   bool _coreStarted = false;
   List<String>? _sharedWaiting;
   List<String>? _sharedForChoice;
-  bool _clipboardOn = false;
+  bool? _clipboardOn;
   bool? _menuEntry;
   DateTime _startedAt = DateTime.now();
   static const _discoveryGrace = Duration(seconds: 10);
@@ -241,7 +241,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> _syncClipboard(bool enabled) async {
     if (platform.clipboard == ClipboardSupport.none) return;
-    if (enabled == _clipboardOn) return;
+    // Windows may have been started out of sight at sign-in, so it hears the
+    // first answer even when it is off. Elsewhere everything starts off.
+    final known = _clipboardOn ?? (Platform.isWindows ? null : false);
+    if (enabled == known) return;
     _clipboardOn = enabled;
     await platform.setBackground(enabled);
     if (platform.clipboard == ClipboardSupport.automatic) {
