@@ -17,6 +17,10 @@ String formatSize(L10n t, int bytes) {
 
 /// A folder path as the owner thinks of it, without the sandbox's internals.
 String friendlyFolder(L10n t, String path) {
+  // On iOS the app's own documents, as the Files app names them.
+  final documents = RegExp(r'^.*/Containers/Data/Application/[^/]+/Documents');
+  final inFiles = path.replaceFirst(documents, t.filesAppFolder);
+  if (inFiles != path) return inFiles;
   final downloads = RegExp(r'^.*/(?:Data/)?Downloads(?=/|$)');
   final shown = path.replaceFirst(downloads, t.downloadsFolder);
   if (shown != path) return shown;

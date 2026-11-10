@@ -551,7 +551,7 @@ async fn holds_an_executable_disguised_as_a_photo() {
     assert!(!dst.path().join("cat.jpg").exists());
 }
 
-#[cfg(target_vendor = "apple")]
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn marks_received_files_as_downloaded() {
     let pair = paired().await;
@@ -1882,7 +1882,7 @@ async fn a_held_item_is_listed_and_can_be_let_in() {
         std::fs::read(recv.path().join("cat.jpg")).unwrap(),
         b"MZ-this-is-a-program"
     );
-    #[cfg(target_vendor = "apple")]
+    #[cfg(target_os = "macos")]
     assert!(
         xattr::get(recv.path().join("cat.jpg"), "com.apple.quarantine")
             .unwrap()

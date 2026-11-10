@@ -224,7 +224,7 @@ pub fn prefix_digest(hashes: &[[u8; 32]]) -> [u8; 32] {
     *h.finalize().as_bytes()
 }
 
-#[cfg(target_vendor = "apple")]
+#[cfg(target_os = "macos")]
 fn mark_downloaded(file: &std::fs::File, _path: &Path) -> io::Result<()> {
     use xattr::FileExt;
     // The system marks a sandboxed app's files as they are created, and does
@@ -248,7 +248,8 @@ fn mark_downloaded(_file: &std::fs::File, path: &Path) -> io::Result<()> {
     std::fs::write(stream, b"[ZoneTransfer]\r\nZoneId=3\r\n")
 }
 
-#[cfg(not(any(target_vendor = "apple", windows)))]
+// iOS has no download mark: nothing there runs a file because of where it came from.
+#[cfg(not(any(target_os = "macos", windows)))]
 #[allow(clippy::unnecessary_wraps)]
 const fn mark_downloaded(_file: &std::fs::File, _path: &Path) -> io::Result<()> {
     Ok(())
@@ -311,7 +312,7 @@ impl ReceiveFolder {
     /// Whether download marks can be stored on this volume.
     #[must_use]
     pub fn marks_supported(&self) -> bool {
-        if !cfg!(any(target_vendor = "apple", windows)) {
+        if !cfg!(any(target_os = "macos", windows)) {
             return false;
         }
         let probe = self.path.join(".zerohop-mark-probe");
@@ -658,7 +659,10 @@ struct OpenFile {
     mtime_ms: Option<i64>,
     #[cfg_attr(
         not(any(target_vendor = "apple", windows)),
-        expect(dead_code, reason = "only macOS and Windows can set a creation time")
+        expect(
+            dead_code,
+            reason = "only Apple systems and Windows can set a creation time"
+        )
     )]
     created_ms: Option<i64>,
 }
@@ -1189,6 +1193,9 @@ impl TransferWriter {
             }
             #[cfg(target_vendor = "apple")]
             if let Some(t) = current.created_ms.and_then(to_time) {
+                #[cfg(target_os = "ios")]
+                use std::os::ios::fs::FileTimesExt;
+                #[cfg(target_os = "macos")]
                 use std::os::macos::fs::FileTimesExt;
                 times = times.set_created(t);
             }
