@@ -724,7 +724,10 @@ fn nothing_is_sent_to_a_device_that_cannot_be_found() {
     b.ok("send", json!({ "device": device_of(&b), "paths": [path] }));
     let end = b.wait_event("a failure", |m| m["event"] == "transfer_ended");
     assert_ne!(end["outcome"], "done");
-    assert!(b.snapshot()["transfers"].as_array().unwrap().is_empty());
+    // The state that drops the transfer is published just after the event.
+    b.wait_snapshot("no transfer left", |s| {
+        s["transfers"].as_array().unwrap().is_empty()
+    });
 }
 
 // ---- The shared clipboard ----
