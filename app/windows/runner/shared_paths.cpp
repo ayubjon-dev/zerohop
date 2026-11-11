@@ -158,3 +158,9 @@ void AddSendToEntry() {
   }
   link->Release();
 }
+
+UINT QuitMessage() {
+  static const UINT message =
+      ::RegisterWindowMessageW(L"dev.zerohop.app.quit");
+  return message;
+}

@@ -159,3 +159,25 @@ jobs:
           path: app/build/windows/x64/runner/Release/
           retention-days: 7
           if-no-files-found: error
+      # The installer is unsigned until code signing is set up, so Windows
+      # warns before running it.
+      - name: Make the Windows installer
+        if: matrix.name == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress --yes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $version = (Select-String -Path app/pubspec.yaml -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)').Matches[0].Groups[1].Value
+          & $iscc "/DAppVersion=$version" app/windows/installer/zerohop.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Keep the Windows installer
+        if: matrix.name == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zerohop-windows-setup
+          path: app/build/windows/installer/*.exe
+          retention-days: 7
+          if-no-files-found: error
