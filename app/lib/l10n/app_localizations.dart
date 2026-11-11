@@ -1285,6 +1285,18 @@ abstract class L10n {
   /// **'Send with one tap'**
   String get clipboardOneTap;
 
+  /// No description provided for @clipboardWhileOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Send with one tap. Arrives while Zerohop is open'**
+  String get clipboardWhileOpen;
+
+  /// No description provided for @clipboardSubWhileOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy on one device and paste on another. From here it goes with a tap, and from your other devices it arrives while Zerohop is open. Passwords from password managers stay where they are.'**
+  String get clipboardSubWhileOpen;
+
   /// No description provided for @clipboardSend.
   ///
   /// In en, this message translates to:
@@ -1404,6 +1416,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'The system did not allow reading the clipboard'**
   String get clipDenied;
+
+  /// No description provided for @clipDeniedAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'iOS did not let Zerohop read the clipboard. Allow pasting when iOS asks, or check Zerohop in the Settings app.'**
+  String get clipDeniedAsk;
 
   /// No description provided for @clipTileTitle.
   ///

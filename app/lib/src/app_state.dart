@@ -260,7 +260,10 @@ class AppState extends ChangeNotifier {
     final known = _clipboardOn ?? (Platform.isWindows ? null : false);
     if (enabled == known) return;
     _clipboardOn = enabled;
-    await platform.setBackground(enabled);
+    // iOS gives the app no way to keep listening once it is out of sight.
+    if (platform.clipboard != ClipboardSupport.tapWhileOpen) {
+      await platform.setBackground(enabled);
+    }
     if (platform.clipboard == ClipboardSupport.automatic) {
       clipboardAccess = await platform.watchClipboard(enabled);
     }
@@ -576,8 +579,9 @@ class AppState extends ChangeNotifier {
   /// On Android and iOS the file picker hands over private copies. They take
   /// up room until removed. On Android each sits alone in a folder made for
   /// it in the cache, while iOS puts them all side by side in the system's
-  /// temporary folder. Copies from the iOS photo library each sit alone in
-  /// a folder of their own again, under [PlatformBridge.photosFolder].
+  /// temporary folder. Copies from the iOS photo library, and files shared
+  /// from other iOS apps, each sit alone in a folder of their own again,
+  /// under [PlatformBridge.photosFolder] or [PlatformBridge.sharedFolder].
   void _discard(List<Picked> items) {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     unawaited(() async {
@@ -585,12 +589,15 @@ class AppState extends ChangeNotifier {
       final cache = ios
           ? _realPath(Directory.systemTemp.path)
           : (await getTemporaryDirectory()).path;
-      final photos = '$cache/${PlatformBridge.photosFolder}';
+      final ownFolders = {
+        '$cache/${PlatformBridge.photosFolder}',
+        '$cache/${PlatformBridge.sharedFolder}',
+      };
       for (final item in items) {
         final path = ios ? _realPath(item.path) : item.path;
         if (!path.startsWith('$cache/')) continue;
         final copy = File(path);
-        final alone = !ios || copy.parent.parent.path == photos;
+        final alone = !ios || ownFolders.contains(copy.parent.parent.path);
         try {
           await (alone ? copy.parent : copy).delete(recursive: true);
         } on FileSystemException {
@@ -705,7 +712,10 @@ class AppState extends ChangeNotifier {
           'secret' => t.clipSecret,
           'same' => t.clipSame,
           'too_large' => t.clipTooLarge,
-          'denied' => t.clipDenied,
+          'denied' =>
+            platform.clipboard == ClipboardSupport.tapWhileOpen
+                ? t.clipDeniedAsk
+                : t.clipDenied,
           _ => t.clipEmpty,
         },
       );

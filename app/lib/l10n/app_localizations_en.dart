@@ -725,6 +725,14 @@ class L10nEn extends L10n {
   String get clipboardOneTap => 'Send with one tap';
 
   @override
+  String get clipboardWhileOpen =>
+      'Send with one tap. Arrives while Zerohop is open';
+
+  @override
+  String get clipboardSubWhileOpen =>
+      'Copy on one device and paste on another. From here it goes with a tap, and from your other devices it arrives while Zerohop is open. Passwords from password managers stay where they are.';
+
+  @override
   String get clipboardSend => 'Send';
 
   @override
@@ -787,6 +795,10 @@ class L10nEn extends L10n {
 
   @override
   String get clipDenied => 'The system did not allow reading the clipboard';
+
+  @override
+  String get clipDeniedAsk =>
+      'iOS did not let Zerohop read the clipboard. Allow pasting when iOS asks, or check Zerohop in the Settings app.';
 
   @override
   String get clipTileTitle => 'Button in quick settings';

@@ -736,6 +736,14 @@ class L10nRu extends L10n {
   String get clipboardOneTap => 'Отправка одним нажатием';
 
   @override
+  String get clipboardWhileOpen =>
+      'Отправка одним нажатием. Приходит, пока Zerohop открыт';
+
+  @override
+  String get clipboardSubWhileOpen =>
+      'Скопированное на одном устройстве можно вставить на другом. Отсюда буфер уходит по нажатию, а с других устройств приходит, пока Zerohop открыт. Пароли из менеджеров паролей не передаются.';
+
+  @override
   String get clipboardSend => 'Отправить';
 
   @override
@@ -798,6 +806,10 @@ class L10nRu extends L10n {
 
   @override
   String get clipDenied => 'Система не разрешила прочитать буфер';
+
+  @override
+  String get clipDeniedAsk =>
+      'iOS не разрешила прочитать буфер. Разрешите вставку, когда iOS спросит, или проверьте Zerohop в приложении «Настройки».';
 
   @override
   String get clipTileTitle => 'Кнопка в шторке';

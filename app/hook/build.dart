@@ -108,6 +108,11 @@ void main(List<String> args) async {
       environment['SDKROOT'] = await _appleSdkPath('macosx');
     } else if (code.targetOS == OS.iOS) {
       final simulator = code.iOS.targetSdk == IOSSdk.iPhoneSimulator;
+      // Without it Rust links for iOS 10 while C code is built for the SDK,
+      // and the device build misses symbols that iOS 10 did not have.
+      final version = code.iOS.deploymentVersion;
+      environment['IPHONEOS_DEPLOYMENT_TARGET'] =
+          '${version.major}.${version.minor}';
       environment['SDKROOT'] = await _appleSdkPath(
         simulator ? 'iphonesimulator' : 'iphoneos',
       );

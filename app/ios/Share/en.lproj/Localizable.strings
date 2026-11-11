@@ -1,0 +1,10 @@
+/* The Share extension: Zerohop prepares the files, the owner sends them from the app. */
+"preparing" = "Getting the files ready…";
+"ready" = "The files are ready. Open Zerohop to choose the device. Nothing is sent until you tap Send there.";
+"partly" = "%d of them could not be prepared and were left out.";
+"nothing" = "Zerohop could not take any of these. Folders and links cannot be sent from here.";
+"no_room" = "There is not enough free space on this device to get the files ready.";
+"failed" = "Could not get the files ready.";
+"unavailable" = "This copy of Zerohop cannot take shared files.";
+"cancel" = "Cancel";
+"done" = "Done";
