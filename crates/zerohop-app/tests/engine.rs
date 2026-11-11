@@ -305,10 +305,62 @@ fn a_wrong_code_is_reported_and_the_code_stops_working() {
         }),
     );
     b.wait_event("joiner told", |m| {
-        m["event"] == "pairing_ended" && m["outcome"] != "paired"
+        m["event"] == "pairing_ended" && m["outcome"] == "wrong_code"
     });
-    a.wait_event("host told", |m| {
-        m["event"] == "pairing_ended" && m["outcome"] != "paired"
+    // The QR code keeps pairing mode open; only the code is gone.
+    let after = a.wait_snapshot("the code spent", |s| s["pairing"]["code_spent"] == true);
+    assert!(after["pairing"]["code"].is_null());
+    assert!(after["pairing"]["qr"].is_string());
+    assert!(a.snapshot()["devices"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn the_host_shows_where_to_type_the_code() {
+    let a = Side::new("Mac");
+    a.ok("pair_host", Value::Null);
+    let waiting = a.wait_snapshot("the code", |s| s["pairing"]["code"].is_string());
+    let port = waiting["pairing"]["port"].as_u64().unwrap();
+    let addresses = waiting["pairing"]["addresses"].as_array().unwrap();
+    assert!(addresses.contains(&json!(format!("127.0.0.1:{port}"))));
+}
+
+#[test]
+fn a_scanned_qr_code_pairs_without_a_typed_code() {
+    let (a, b) = (Side::new("Mac"), Side::new("Phone"));
+    a.ok("pair_host", Value::Null);
+    let waiting = a.wait_snapshot("the QR code", |s| s["pairing"]["qr"].is_string());
+    b.ok("pair_scan", json!({ "link": waiting["pairing"]["qr"] }));
+    let x = a.wait_snapshot("host compare", |s| s["pairing"]["phase"] == "compare");
+    let y = b.wait_snapshot("joiner compare", |s| s["pairing"]["phase"] == "compare");
+    assert_eq!(x["pairing"]["comparison"], y["pairing"]["comparison"]);
+    a.ok("pair_answer", json!({ "accept": true }));
+    b.ok("pair_answer", json!({ "accept": true }));
+    b.wait_event("joiner paired", |m| {
+        m["event"] == "pairing_ended" && m["outcome"] == "paired"
+    });
+    b.wait_snapshot("joiner device list", |s| s["devices"][0]["name"] == "Mac");
+}
+
+#[test]
+fn a_qr_code_from_another_app_is_refused() {
+    let b = Side::new("Phone");
+    let reply = b.call("pair_scan", json!({ "link": "https://example.com/pair" }));
+    assert_eq!(reply["error"]["kind"], "bad_link", "{reply}");
+}
+
+#[test]
+fn a_qr_code_naming_another_host_key_does_not_pair() {
+    let (a, b) = (Side::new("Mac"), Side::new("Phone"));
+    a.ok("pair_host", Value::Null);
+    let waiting = a.wait_snapshot("the QR code", |s| s["pairing"]["qr"].is_string());
+    let link = waiting["pairing"]["qr"].as_str().unwrap();
+    // Swap the host key for another one, as a forged code would.
+    let start = link.find("k=").unwrap() + 2;
+    let end = start + link[start..].find('&').unwrap();
+    let forged = format!("{}{}{}", &link[..start], "A".repeat(43), &link[end..]);
+    b.ok("pair_scan", json!({ "link": forged }));
+    b.wait_event("joiner told", |m| {
+        m["event"] == "pairing_ended" && m["outcome"] == "unreachable"
     });
     assert!(a.snapshot()["devices"].as_array().unwrap().is_empty());
 }

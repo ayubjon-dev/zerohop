@@ -239,11 +239,11 @@ There is one pairing protocol. A QR code and a typed code differ only in how the
 ### 8.1 Flow
 
 1. The owner opens pairing on the host. If the host has no circle yet, it creates one with a genesis event. Pairing mode MUST start only from a direct user action. The joiner generates a new device key.
-2. The host generates the secret and a random 4-hex-character **room label**, shows both, and opens a dedicated pairing listener. It advertises `_zerohop-pair._tcp` with TXT `v=1` and `r=<room label>`. A joiner seeing several rooms lets the owner pick by label.
+2. The host generates the secret and a random 4-hex-character **room label**, shows both, and opens a dedicated pairing listener. It advertises `_zerohop-pair._tcp` with TXT `v=1` and `r=<room label>`. A joiner seeing several rooms lets the owner pick by label. A host MAY offer a QR code and a typed code at once, each with its own secret and its own listener; only the typed code's listener is advertised, and the QR code carries the other's addresses.
 3. Pairing mode ends after 120 seconds or when pairing finishes. An attempt already past step 6 may complete. Outside pairing mode the listener MUST NOT exist. Only one pairing attempt runs at a time.
 4. The joiner connects. Both sides present raw public keys. Neither checks the other's key against a list, except that a QR joiner MUST verify the host's key equals the key in the QR code.
 5. Both sides compute `E = TLS-Exporter("EXPORTER-zerohop-pair-v1", "", 32)`.
-6. **For a typed code, the host MUST burn the secret when it receives the first `PakeA`, before computing `PakeB`.** Any later attempt needs a new code from a new user action, whether or not the first attempt succeeded. A 128-bit QR secret cannot be guessed and is not burned this way, so an attacker burning typed codes cannot block QR pairing.
+6. **For a typed code, the host MUST burn the secret when it receives the first `PakeA`, before computing `PakeB`.** Any later attempt needs a new code from a new user action, whether or not the first attempt succeeded. A 128-bit QR secret cannot be guessed and is not burned this way, so an attacker burning typed codes cannot block QR pairing. When both are offered, burning the typed code closes only its listener, and pairing mode continues with the QR code.
 7. They run SPAKE2 with the joiner as side A and the host as side B, using the raw device IDs as identities and the encoding above as the password. The result is `K`.
 8. Both sides derive 64 bytes: `HKDF-SHA-256(ikm=K, info="zerohop-v1/pair-confirm" || E || joiner_id || host_id || msg_a || msg_b)`. The first 32 bytes are `K_host`, the last 32 are `K_joiner`.
 9. Key confirmation, comparison code and approval use these frames in order. Tags MUST be compared in constant time. A wrong tag, or a commitment that does not match, ends pairing with `PAIRING_FAILED`.
@@ -280,6 +280,8 @@ zerohop://pair/1?k=<host device ID, base64url>&s=<secret, base64url>&a=<ip:port>
 ```
 
 Applications MUST NOT register this URI scheme with the operating system. Only the scanner inside Zerohop reads it, so a link on a web page can never start pairing. Addresses in the payload are subject to section 6.1.
+
+A joiner MUST refuse a payload with an unknown parameter, a repeated `k` or `s`, or more than 8 addresses. It tries the addresses in order until one completes the TLS handshake with the pinned key, and MUST NOT move on to another address once it has sent `PakeA`.
 
 ## 9. Framing
 

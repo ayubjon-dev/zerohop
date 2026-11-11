@@ -57,6 +57,12 @@ class Pairing {
     : role = raw['role'] as String,
       phase = raw['phase'] as String,
       code = raw['code'] as String?,
+      codeSpent = raw['code_spent'] as bool? ?? false,
+      qr = raw['qr'] as String?,
+      addresses = [
+        for (final a in raw['addresses'] as List<dynamic>? ?? const [])
+          a as String,
+      ],
       room = raw['room'] as String?,
       port = raw['port'] as int?,
       comparison = raw['comparison'] as String?,
@@ -68,6 +74,15 @@ class Pairing {
   final String role;
   final String phase;
   final String? code;
+
+  /// Someone tried the code, so it no longer works; the QR code still does.
+  final bool codeSpent;
+
+  /// The QR payload the host shows, when it has an address to put in it.
+  final String? qr;
+
+  /// Where the host can be reached with the code, as address:port.
+  final List<String> addresses;
   final String? room;
   final int? port;
   final String? comparison;

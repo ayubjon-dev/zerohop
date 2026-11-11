@@ -85,6 +85,14 @@ String describeError(L10n t, String kind) {
       return t.errAlreadyLinked;
     case 'bad_address':
       return t.errBadAddress;
+    case 'bad_link':
+      return t.errBadLink;
+    case 'own_link':
+      return t.errOwnLink;
+    case 'camera_denied':
+      return t.errCameraDenied;
+    case 'no_camera':
+      return t.errNoCamera;
     case 'bad_name':
       return t.errBadName;
     case 'folder_unavailable':

@@ -3,19 +3,22 @@
 //! There is one protocol. A QR code and a typed code differ only in how the
 //! shared secret reaches the other screen.
 
-use std::future::Future;
+use std::future::{Future, poll_fn};
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
+use std::task::Poll;
 use std::time::Duration;
 
 use ed25519_dalek::SigningKey;
 use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
+use rustls::ClientConfig;
 use sha2::{Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 use subtle::ConstantTimeEq;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{Instant, timeout, timeout_at};
 use zeroize::Zeroizing;
 
@@ -45,6 +48,10 @@ const ACK_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Longest display name in bytes.
 pub const MAX_NAME_BYTES: usize = 63;
+
+/// Most addresses a QR code may carry. Each one can cost the joiner a
+/// connection attempt, and a home network needs only a few.
+pub const MAX_QR_ADDRESSES: usize = 8;
 
 /// Errors during pairing.
 #[derive(Debug, thiserror::Error)]
@@ -473,6 +480,14 @@ pub struct PairedDevice {
     pub name: String,
 }
 
+/// One way into pairing mode: a listener and the secret it accepts.
+pub struct PairingListener {
+    /// Where joiners connect.
+    pub listener: TcpListener,
+    /// What they must know.
+    pub secret: PairingSecret,
+}
+
 /// Runs pairing mode until it succeeds, is burned, or the window closes.
 ///
 /// The listener exists only for the duration of this call and has its own TLS
@@ -483,21 +498,52 @@ pub struct PairedDevice {
 pub async fn host<A, F, Fut>(
     listener: TcpListener,
     nets: &LocalNetworks,
-    mut circle: A,
+    circle: A,
     secret: &PairingSecret,
     my_info: PeerInfo,
-    mut confirm: F,
+    confirm: F,
 ) -> Result<PairedDevice, PairingError>
 where
     A: CircleAccess,
     F: FnMut(PairingPrompt) -> Fut,
     Fut: Future<Output = bool>,
 {
+    let entry = PairingListener {
+        listener,
+        secret: secret.clone(),
+    };
+    host_any(vec![entry], nets, circle, my_info, confirm, || {}).await
+}
+
+/// Like [`host`], open to several secrets at once, such as a QR code and a
+/// typed code, each on its own listener.
+///
+/// Attempts still run one at a time. A spent code closes only its own
+/// listener and calls `spent`, so that burning typed codes cannot block a QR
+/// code (protocol section 8.1, step 6). Pairing mode ends when the last
+/// listener closes.
+///
+/// # Errors
+/// Returns an error if pairing does not succeed.
+pub async fn host_any<A, F, Fut, S>(
+    mut entries: Vec<PairingListener>,
+    nets: &LocalNetworks,
+    mut circle: A,
+    my_info: PeerInfo,
+    mut confirm: F,
+    mut spent: S,
+) -> Result<PairedDevice, PairingError>
+where
+    A: CircleAccess,
+    F: FnMut(PairingPrompt) -> Fut,
+    Fut: Future<Output = bool>,
+    S: FnMut(),
+{
     let (key, host_id) = circle.with(|c| (c.key().clone(), c.device_id()))?;
     let cfg = tls::server_config(&key, PeerRule::AnyForPairing, ALPN_PAIRING)?;
     let deadline = Instant::now() + PAIRING_WINDOW;
     loop {
-        let (tcp, addr) = timeout_at(deadline, listener.accept())
+        let (tcp, addr, index) = timeout_at(deadline, accept_any(&entries))
             .await
             .map_err(|_| PairingError::Timeout)?
             .map_err(WireError::Io)?;
@@ -517,11 +563,15 @@ where
             host: host_id,
         };
         let mut burned = false;
+        let secret = entries
+            .get(index)
+            .map(|e| e.secret.clone())
+            .ok_or(PairingError::Protocol)?;
         let result = host_session(
             &mut stream,
             &mut circle,
             &t,
-            secret,
+            &secret,
             &my_info,
             &mut burned,
             &mut confirm,
@@ -535,12 +585,35 @@ where
                     name: o.joiner_name,
                 });
             }
-            // A spent code ends pairing, and so does a decision by the owner.
-            Err(e) if burned || matches!(e, PairingError::Declined) => return Err(e),
+            // A decision by the owner ends pairing.
+            Err(e @ PairingError::Declined) => return Err(e),
+            // A spent code closes its listener, and pairing ends with the last one.
+            Err(e) if burned => {
+                entries.remove(index);
+                if entries.is_empty() {
+                    return Err(e);
+                }
+                spent();
+            }
             // A stranger that never tried, or a failed QR attempt, leaves the window open.
             Err(_) => {}
         }
     }
+}
+
+/// Waits for a connection on any of the listeners.
+async fn accept_any(
+    entries: &[PairingListener],
+) -> std::io::Result<(TcpStream, SocketAddr, usize)> {
+    poll_fn(|cx| {
+        for (index, entry) in entries.iter().enumerate() {
+            if let Poll::Ready(accepted) = entry.listener.poll_accept(cx) {
+                return Poll::Ready(accepted.map(|(tcp, addr)| (tcp, addr, index)));
+            }
+        }
+        Poll::Pending
+    })
+    .await
 }
 
 fn circle_id_from(events: &[crate::ledger::SignedEvent]) -> Option<CircleId> {
@@ -672,7 +745,7 @@ where
     Fut: Future<Output = bool>,
 {
     join_sealed(
-        addr,
+        &[addr],
         nets,
         dir,
         key,
@@ -687,11 +760,14 @@ where
 
 /// Like [`join`], sealing the device key on disk.
 ///
+/// The addresses are tried in turn until one answers with TLS, as a QR code
+/// may list several. Nothing is retried once the pairing itself has begun.
+///
 /// # Errors
 /// Returns an error if pairing does not succeed.
 #[allow(clippy::too_many_arguments)]
 pub async fn join_sealed<F, Fut>(
-    addr: SocketAddr,
+    addrs: &[SocketAddr],
     nets: &LocalNetworks,
     dir: &Path,
     key: SigningKey,
@@ -710,7 +786,7 @@ where
         HostPin::Key(k) => PeerRule::Exact(k),
     };
     let cfg = tls::client_config(&key, rule, ALPN_PAIRING)?;
-    let mut stream = tls::connect(nets, addr, cfg).await?;
+    let mut stream = connect_first(nets, addrs, &cfg).await?;
     let (_, conn) = stream.get_ref();
     let host_id = peer_id(conn.peer_certificates())?;
     let exporter = conn
@@ -728,6 +804,22 @@ where
     stream.flush().await.map_err(WireError::Io)?;
     let _ = stream.shutdown().await;
     Ok(circle)
+}
+
+/// Connects to the first address that completes a TLS handshake.
+async fn connect_first(
+    nets: &LocalNetworks,
+    addrs: &[SocketAddr],
+    cfg: &Arc<ClientConfig>,
+) -> Result<tls::ClientStream, TlsError> {
+    let mut last = TlsError::NotLocal;
+    for &addr in addrs.iter().take(MAX_QR_ADDRESSES) {
+        match tls::connect(nets, addr, cfg.clone()).await {
+            Ok(stream) => return Ok(stream),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
 }
 
 /// A QR payload as defined in protocol section 8.2.
@@ -758,7 +850,8 @@ impl QrPayload {
         out
     }
 
-    /// Parses a URI, refusing anything malformed.
+    /// Parses a URI, refusing anything malformed, a repeated key or secret,
+    /// and more than [`MAX_QR_ADDRESSES`] addresses.
     #[must_use]
     pub fn decode(uri: &str) -> Option<Self> {
         let query = uri.strip_prefix("zerohop://pair/1?")?;
@@ -767,11 +860,13 @@ impl QrPayload {
         for part in query.split('&') {
             let (key, value) = part.split_once('=')?;
             match key {
-                "k" => host = Some(<[u8; 32]>::try_from(b64.decode(value.as_bytes()).ok()?).ok()?),
-                "s" => {
-                    secret = Some(<[u8; 16]>::try_from(b64.decode(value.as_bytes()).ok()?).ok()?)
+                "k" if host.is_none() => {
+                    host = Some(<[u8; 32]>::try_from(b64.decode(value.as_bytes()).ok()?).ok()?);
                 }
-                "a" => addresses.push(value.parse().ok()?),
+                "s" if secret.is_none() => {
+                    secret = Some(<[u8; 16]>::try_from(b64.decode(value.as_bytes()).ok()?).ok()?);
+                }
+                "a" if addresses.len() < MAX_QR_ADDRESSES => addresses.push(value.parse().ok()?),
                 _ => return None,
             }
         }
@@ -857,5 +952,54 @@ mod tests {
         assert_eq!(QrPayload::decode("https://example.com"), None);
         assert_eq!(QrPayload::decode("zerohop://pair/1?k=abc&s=def"), None);
         assert_eq!(QrPayload::decode("zerohop://pair/1?zzz=1"), None);
+    }
+
+    fn sample() -> QrPayload {
+        QrPayload {
+            host: [4; 32],
+            secret: [5; 16],
+            addresses: vec!["192.168.1.2:4000".parse().unwrap()],
+        }
+    }
+
+    #[test]
+    fn qr_decoder_refuses_a_second_key() {
+        let uri = format!("{}&k={}", sample().encode(), "B".repeat(43));
+        assert_eq!(QrPayload::decode(&uri), None);
+    }
+
+    #[test]
+    fn qr_decoder_refuses_a_second_secret() {
+        let uri = format!("{}&s={}", sample().encode(), "B".repeat(22));
+        assert_eq!(QrPayload::decode(&uri), None);
+    }
+
+    #[test]
+    fn qr_decoder_refuses_too_many_addresses() {
+        let mut p = sample();
+        p.addresses = vec!["192.168.1.2:4000".parse().unwrap(); MAX_QR_ADDRESSES + 1];
+        assert_eq!(QrPayload::decode(&p.encode()), None);
+    }
+
+    #[test]
+    fn qr_decoder_accepts_the_most_addresses_allowed() {
+        let mut p = sample();
+        p.addresses = vec!["192.168.1.2:4000".parse().unwrap(); MAX_QR_ADDRESSES];
+        assert_eq!(QrPayload::decode(&p.encode()), Some(p));
+    }
+
+    #[test]
+    fn qr_decoder_refuses_another_version() {
+        let uri = sample().encode().replace("pair/1?", "pair/2?");
+        assert_eq!(QrPayload::decode(&uri), None);
+    }
+
+    #[test]
+    fn qr_decoder_refuses_a_short_secret() {
+        let uri = format!(
+            "zerohop://pair/1?k={}&s=AAAA",
+            data_encoding::BASE64URL_NOPAD.encode(&[4; 32])
+        );
+        assert_eq!(QrPayload::decode(&uri), None);
     }
 }

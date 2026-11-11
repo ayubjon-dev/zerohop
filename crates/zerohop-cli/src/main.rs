@@ -14,7 +14,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use tokio::net::TcpListener;
 use zerohop_core::address::LocalNetworks;
-use zerohop_core::circle::{Circle, generate_key};
+use zerohop_core::circle::{Circle, KeySealing, generate_key};
 use zerohop_core::ledger::{DeviceId, Platform};
 use zerohop_core::names::display_name;
 use zerohop_core::node::{Node, NodeError};
@@ -383,22 +383,23 @@ async fn pair_join(ctx: &Env, target: &str, code: Option<&str>, name: &str) -> R
             HostPin::None,
         )
     };
-    let address = *addresses
-        .first()
-        .context("this pairing link has no address")?;
+    if addresses.is_empty() {
+        bail!("this pairing link has no address");
+    }
     let info = PeerInfo {
         name: name.to_string(),
         platform: this_platform(),
     };
     let key = generate_key()?;
-    let circle = pairing::join(
-        address,
+    let circle = pairing::join_sealed(
+        &addresses,
         &ctx.nets,
         &ctx.state,
         key,
         &secret,
         pin,
         info,
+        &KeySealing::default(),
         confirm_pairing,
     )
     .await?;

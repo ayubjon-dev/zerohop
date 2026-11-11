@@ -813,6 +813,26 @@ class AppState extends ChangeNotifier {
     await core.call('pair_join', {'address': address, 'code': code});
   });
 
+  /// Reads the other device's QR code with the camera and joins it.
+  Future<void> scanToJoin(Map<String, String> words) => _run(() async {
+    final String? link;
+    try {
+      link = await platform.scanQr(words);
+    } on PlatformException catch (error) {
+      final kind = error.code;
+      show((t) => describeError(t, kind));
+      return;
+    }
+    if (link == null) return;
+    await core.call('pair_scan', {'link': link});
+  });
+
+  /// Starts over with a fresh code after the last one was spent.
+  Future<void> renewCode() => _run(() async {
+    await core.call('pair_cancel');
+    await core.call('pair_host');
+  });
+
   Future<void> answerPairing(bool accept) => _run(() async {
     await core.call('pair_answer', {'accept': accept});
   });

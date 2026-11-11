@@ -12,12 +12,17 @@ const _channel = MethodChannel('dev.zerohop/platform');
 enum ClipboardSupport { none, automatic, oneTap }
 
 class PlatformBridge {
-  const PlatformBridge({ClipboardSupport? clipboard, bool? photos})
-    : _clipboard = clipboard,
-      _photos = photos;
+  const PlatformBridge({
+    ClipboardSupport? clipboard,
+    bool? photos,
+    bool? scanner,
+  }) : _clipboard = clipboard,
+       _photos = photos,
+       _scanner = scanner;
 
   final ClipboardSupport? _clipboard;
   final bool? _photos;
+  final bool? _scanner;
 
   bool get _isMac => Platform.isMacOS;
   bool get _isAndroid => Platform.isAndroid;
@@ -39,6 +44,16 @@ class PlatformBridge {
   /// device key. On Windows the core asks the system itself.
   Future<Uint8List?> deviceSecret() =>
       _channel.invokeMethod<Uint8List>('deviceSecret');
+
+  /// Phones can read a pairing QR code with their camera.
+  bool get canScanQr => _scanner ?? (_isAndroid || Platform.isIOS);
+
+  /// Opens the camera until it sees a Zerohop pairing code, and returns it.
+  /// Null when the owner closes the scanner. Throws a [PlatformException]
+  /// with code `camera_denied` or `no_camera` when it cannot start. [words]
+  /// carries the scanner's text in the owner's language.
+  Future<String?> scanQr(Map<String, String> words) =>
+      _channel.invokeMethod<String>('scanQr', words);
 
   /// Phones have no way to hand over a folder as a path.
   bool get canPickFolders => !_isAndroid && !Platform.isIOS;

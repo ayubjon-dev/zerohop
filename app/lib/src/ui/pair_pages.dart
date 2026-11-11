@@ -9,6 +9,7 @@ import '../model.dart';
 import '../theme.dart';
 import 'icons.dart';
 import 'onboarding.dart';
+import 'qr_view.dart';
 import 'widgets.dart';
 
 class _PageFrame extends StatelessWidget {
@@ -99,6 +100,19 @@ class PairChoicePage extends StatelessWidget {
                     t.showCodeSub,
                     state.startHosting,
                   ),
+                  if (state.platform.canScanQr) ...[
+                    const ZDivider(),
+                    option(
+                      ZIcons.scan,
+                      t.scanCode,
+                      t.scanCodeSub,
+                      () => state.scanToJoin({
+                        'title': t.scanTitle,
+                        'notZerohop': t.scanNotZerohop,
+                        'cancel': t.cancelAction,
+                      }),
+                    ),
+                  ],
                   const ZDivider(),
                   option(
                     ZIcons.hash,
@@ -155,11 +169,14 @@ class _PairShowPageState extends State<PairShowPage> {
     final t = L10n.of(context);
     final pairing = widget.pairing;
     final code = pairing?.code ?? '';
+    final qrLink = pairing?.qr;
+    final spent = pairing?.codeSpent ?? false;
     final seconds = pairing == null
         ? 0
         : ((pairing.deadlineMs - DateTime.now().millisecondsSinceEpoch) / 1000)
               .ceil()
               .clamp(0, 120);
+    final width = MediaQuery.sizeOf(context).width;
     return _PageFrame(
       wide: widget.wide,
       title: t.codeTitle,
@@ -169,42 +186,53 @@ class _PairShowPageState extends State<PairShowPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Semantics(
-                label: code,
-                excludeSemantics: true,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+              if (qrLink != null) ...[
+                QrView(
+                  data: qrLink,
+                  size: (width - 40).clamp(180.0, 260.0),
+                  label: t.qrLabel,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  t.qrHint,
+                  textAlign: TextAlign.center,
+                  style: zText(15, color: z.muted, height: 1.35),
+                ),
+                const SizedBox(height: 22),
+              ],
+              if (spent)
+                ZCard(
+                  radius: 18,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (var i = 0; i < code.length; i++)
-                        Padding(
-                          padding: EdgeInsets.only(
-                            left: i == 0 ? 0 : (i == 3 ? 16 : 8),
-                          ),
-                          child: Container(
-                            width: 52,
-                            height: 64,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: z.surface,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Text(
-                              code[i],
-                              style: zText(
-                                30,
-                                weight: 700,
-                                color: z.ink,
-                                tabular: true,
-                              ),
-                            ),
-                          ),
+                      Text(
+                        t.codeSpent,
+                        style: zText(15, color: z.ink, height: 1.35),
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: ZButton(
+                          label: t.newCode,
+                          onPressed: widget.state.renewCode,
                         ),
+                      ),
                     ],
                   ),
-                ),
-              ),
+                )
+              else ...[
+                if (qrLink != null) ...[
+                  Text(
+                    t.orTypeCode,
+                    textAlign: TextAlign.center,
+                    style: zText(15, color: z.muted, height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                _Digits(code: code),
+              ],
               const SizedBox(height: 18),
               if (pairing != null)
                 Text(
@@ -212,6 +240,16 @@ class _PairShowPageState extends State<PairShowPage> {
                   textAlign: TextAlign.center,
                   style: zText(15, color: z.muted, tabular: true),
                 ),
+              if (pairing != null &&
+                  pairing.addresses.isNotEmpty &&
+                  !spent) ...[
+                const SizedBox(height: 6),
+                SelectableText(
+                  t.hostAddresses(pairing.addresses.join(', ')),
+                  textAlign: TextAlign.center,
+                  style: zText(14, color: z.muted, tabular: true),
+                ),
+              ],
               const SizedBox(height: 18),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -225,14 +263,57 @@ class _PairShowPageState extends State<PairShowPage> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    t.waitingForDevice,
-                    style: zText(15, weight: 500, color: z.ink),
+                  Flexible(
+                    child: Text(
+                      t.waitingForDevice,
+                      style: zText(15, weight: 500, color: z.ink),
+                    ),
                   ),
                 ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The six digits, grouped three and three.
+class _Digits extends StatelessWidget {
+  const _Digits({required this.code});
+
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    final z = context.z;
+    return Semantics(
+      label: code,
+      excludeSemantics: true,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < code.length; i++)
+              Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : (i == 3 ? 16 : 8)),
+                child: Container(
+                  width: 52,
+                  height: 64,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: z.surface,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    code[i],
+                    style: zText(30, weight: 700, color: z.ink, tabular: true),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

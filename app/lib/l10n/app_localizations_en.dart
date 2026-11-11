@@ -311,21 +311,56 @@ class L10nEn extends L10n {
   String get showCode => 'Show a code here';
 
   @override
-  String get showCodeSub => 'Six digits to type on the other device';
+  String get showCodeSub => 'A QR code and six digits for the other device';
+
+  @override
+  String get scanCode => 'Scan a QR code';
+
+  @override
+  String get scanCodeSub => 'Point the camera at the code on the other device';
 
   @override
   String get enterCode => 'Enter a code';
 
   @override
-  String get enterCodeSub => 'If one is already showing on the other device';
+  String get enterCodeSub => 'Six digits from the other device';
 
   @override
   String get codeTitle => 'Linking code';
 
   @override
   String roomLine(String room, int seconds) {
-    return 'Room $room. The code works once and expires in $seconds s.';
+    return 'Room $room, $seconds s left.';
   }
+
+  @override
+  String get qrLabel => 'QR code for linking';
+
+  @override
+  String get qrHint =>
+      'On your phone, open Zerohop, tap Add device, then Scan a QR code.';
+
+  @override
+  String get orTypeCode =>
+      'No camera? Type this code on the other device. It works once.';
+
+  @override
+  String get codeSpent =>
+      'Someone already tried this code, so it no longer works. The QR code still does.';
+
+  @override
+  String get newCode => 'New code';
+
+  @override
+  String hostAddresses(String addresses) {
+    return 'To type the address instead: $addresses';
+  }
+
+  @override
+  String get scanTitle => 'Point the camera at the QR code on the other device';
+
+  @override
+  String get scanNotZerohop => 'This isn\'t a Zerohop code';
 
   @override
   String get waitingForDevice => 'Waiting for the other device';
@@ -606,10 +641,25 @@ class L10nEn extends L10n {
 
   @override
   String get errAlreadyLinked =>
-      'This device is already linked to others. Show a code here and enter it on the new device.';
+      'This device is already linked to others. Show a code here, then scan or enter it on the new device.';
 
   @override
   String get errBadAddress => 'That address doesn\'t look right.';
+
+  @override
+  String get errBadLink => 'That isn\'t a Zerohop linking code.';
+
+  @override
+  String get errOwnLink =>
+      'That\'s this device\'s own code. Scan the one on the other device.';
+
+  @override
+  String get errCameraDenied =>
+      'Zerohop can\'t use the camera. Allow it in Settings, or enter the six-digit code instead.';
+
+  @override
+  String get errNoCamera =>
+      'This device has no camera. Enter the six-digit code instead.';
 
   @override
   String get errBadName => 'Enter a shorter name.';

@@ -325,21 +325,56 @@ class L10nRu extends L10n {
   String get showCode => 'Показать код здесь';
 
   @override
-  String get showCodeSub => 'Шесть цифр для ввода на другом устройстве';
+  String get showCodeSub => 'QR-код и шесть цифр для другого устройства';
+
+  @override
+  String get scanCode => 'Сканировать QR-код';
+
+  @override
+  String get scanCodeSub => 'Наведите камеру на код на другом устройстве';
 
   @override
   String get enterCode => 'Ввести код';
 
   @override
-  String get enterCodeSub => 'Если он уже показан на другом устройстве';
+  String get enterCodeSub => 'Шесть цифр с другого устройства';
 
   @override
   String get codeTitle => 'Код для привязки';
 
   @override
   String roomLine(String room, int seconds) {
-    return 'Комната $room. Код работает один раз, осталось $seconds с.';
+    return 'Комната $room, осталось $seconds с.';
   }
+
+  @override
+  String get qrLabel => 'QR-код для привязки';
+
+  @override
+  String get qrHint =>
+      'На телефоне откройте Zerohop, нажмите «Добавить устройство», затем «Сканировать QR-код».';
+
+  @override
+  String get orTypeCode =>
+      'Нет камеры? Введите этот код на другом устройстве. Он сработает один раз.';
+
+  @override
+  String get codeSpent =>
+      'Кто-то уже пробовал этот код, и он больше не действует. QR-код по-прежнему работает.';
+
+  @override
+  String get newCode => 'Новый код';
+
+  @override
+  String hostAddresses(String addresses) {
+    return 'Чтобы ввести адрес вручную: $addresses';
+  }
+
+  @override
+  String get scanTitle => 'Наведите камеру на QR-код на другом устройстве';
+
+  @override
+  String get scanNotZerohop => 'Это не код Zerohop';
 
   @override
   String get waitingForDevice => 'Ждём другое устройство';
@@ -617,10 +652,25 @@ class L10nRu extends L10n {
 
   @override
   String get errAlreadyLinked =>
-      'Это устройство уже связано с другими. Покажите код здесь, а введите его на новом устройстве.';
+      'Это устройство уже связано с другими. Покажите код здесь, а на новом устройстве отсканируйте или введите его.';
 
   @override
   String get errBadAddress => 'Адрес выглядит неверно.';
+
+  @override
+  String get errBadLink => 'Это не код привязки Zerohop.';
+
+  @override
+  String get errOwnLink =>
+      'Это код этого же устройства. Отсканируйте код на другом.';
+
+  @override
+  String get errCameraDenied =>
+      'Zerohop не может открыть камеру. Разрешите доступ в настройках или введите код из цифр.';
+
+  @override
+  String get errNoCamera =>
+      'На этом устройстве нет камеры. Введите код из цифр.';
 
   @override
   String get errBadName => 'Введите имя покороче.';

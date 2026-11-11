@@ -28,7 +28,9 @@ use zerohop_core::discovery;
 use zerohop_core::ledger::{DeviceId, Platform};
 use zerohop_core::names::display_name;
 use zerohop_core::node::{Node, NodeError};
-use zerohop_core::pairing::{self, HostPin, PairingError, PairingPrompt, PairingSecret, short_id};
+use zerohop_core::pairing::{
+    self, HostPin, PairingError, PairingListener, PairingPrompt, PairingSecret, QrPayload, short_id,
+};
 use zerohop_core::receive::{self, HeldItem, ReceiveFolder, StoreError};
 use zerohop_core::session::{LocalInfo, SessionError};
 use zerohop_core::transfer::{
@@ -215,6 +217,9 @@ enum Request {
         address: String,
         code: String,
     },
+    PairScan {
+        link: String,
+    },
     PairAnswer {
         accept: bool,
     },
@@ -321,6 +326,12 @@ struct PairingState {
     role: &'static str,
     phase: &'static str,
     code: Option<String>,
+    /// Someone tried the code, so it no longer works; the QR code still does.
+    code_spent: bool,
+    /// The QR payload, for the host to show.
+    qr: Option<String>,
+    /// Where the host can be reached with the typed code.
+    addresses: Vec<String>,
     room: Option<String>,
     port: Option<u16>,
     comparison: Option<String>,
@@ -527,6 +538,7 @@ impl Shared {
             Request::StartOver => self.start_over(),
             Request::PairHost => self.pair_host().await,
             Request::PairJoin { address, code } => self.pair_join(&address, &code),
+            Request::PairScan { link } => self.pair_scan(&link),
             Request::PairAnswer { accept } => self.pair_answer(accept),
             Request::PairCancel => self.pair_cancel(),
             Request::DiscoverySeen {
@@ -1033,18 +1045,51 @@ impl Shared {
             self.start_device(circle, dir).await?;
         }
         let node = self.node()?;
+        // The typed code and the QR code each get a listener, so that a spent
+        // code leaves the QR code working.
         let listener = bind_preferring(PREFERRED_PAIRING_PORT).await?;
         let port = listener.local_addr()?.port();
+        let qr_listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).await?;
+        let qr_port = qr_listener.local_addr()?.port();
         let secret = PairingSecret::new_code()?;
         let code = secret.display_code().unwrap_or_default().to_string();
+        let qr_secret = PairingSecret::new_qr()?;
         let room = discovery::new_room_label()?;
-        let (name, nets) = {
+        let (name, nets, loopback) = {
             let inner = self.state();
             (
                 inner.settings.name.clone().unwrap_or_default(),
                 inner.nets.clone(),
+                inner.allow_loopback,
             )
         };
+        // The listeners take IPv4 only.
+        let mut ips: Vec<IpAddr> = nets
+            .addresses()
+            .into_iter()
+            .filter(IpAddr::is_ipv4)
+            .take(pairing::MAX_QR_ADDRESSES - 1)
+            .collect();
+        if loopback {
+            ips.insert(0, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        }
+        let host_id = node
+            .circle()
+            .lock()
+            .map(|c| c.device_id())
+            .map_err(|_| AppError::new("failed"))?;
+        let qr = (!ips.is_empty()).then(|| {
+            QrPayload {
+                host: host_id,
+                secret: qr_secret.qr_bytes().unwrap_or_default(),
+                addresses: ips.iter().map(|ip| SocketAddr::new(*ip, qr_port)).collect(),
+            }
+            .encode()
+        });
+        let addresses = ips
+            .iter()
+            .map(|ip| SocketAddr::new(*ip, port).to_string())
+            .collect();
         let info = PeerInfo {
             name,
             platform: this_platform(),
@@ -1055,20 +1100,37 @@ impl Shared {
             role: "host",
             phase: "waiting",
             code: Some(code),
+            qr,
+            addresses,
             room: Some(room),
             port: Some(port),
             deadline_ms,
             ..PairingState::default()
         });
+        let entries = vec![
+            PairingListener { listener, secret },
+            PairingListener {
+                listener: qr_listener,
+                secret: qr_secret,
+            },
+        ];
         let this = self.clone();
         let task = self.handle.spawn(async move {
             let asker = this.clone();
+            let spender = this.clone();
             let handle = node.circle().clone();
             let confirm = move |prompt: PairingPrompt| {
                 let rx = asker.pairing_prompt(&prompt);
                 async move { rx.await.unwrap_or(false) }
             };
-            let result = pairing::host(listener, &nets, &handle, &secret, info, confirm).await;
+            let spent = move || {
+                spender.set_pairing(|p| {
+                    p.code = None;
+                    p.code_spent = true;
+                });
+                spender.publish();
+            };
+            let result = pairing::host_any(entries, &nets, &handle, info, confirm, spent).await;
             match result {
                 Ok(paired) => {
                     let _ = node.publish_membership();
@@ -1102,6 +1164,43 @@ impl Shared {
         if typed.len() != 6 || !typed.bytes().all(|b| b.is_ascii_digit()) {
             return Err(AppError::new("wrong_code"));
         }
+        self.start_join(
+            vec![address],
+            PairingSecret::from_typed(typed),
+            HostPin::None,
+        )
+    }
+
+    /// Joins through a QR code read by the camera. The host's key comes from
+    /// the code, so no other device can stand in for it.
+    fn pair_scan(self: &Arc<Self>, link: &str) -> Reply {
+        if self.state().pairing.is_some() {
+            return Err(AppError::new("pairing_busy"));
+        }
+        let link = QrPayload::decode(link.trim()).ok_or_else(|| AppError::new("bad_link"))?;
+        if link.addresses.is_empty() {
+            return Err(AppError::new("bad_link"));
+        }
+        let own = self
+            .node()
+            .ok()
+            .and_then(|n| n.circle().lock().ok().map(|c| c.device_id()));
+        if own == Some(link.host) {
+            return Err(AppError::new("own_link"));
+        }
+        self.start_join(
+            link.addresses,
+            PairingSecret::from_qr_bytes(link.secret),
+            HostPin::Key(link.host),
+        )
+    }
+
+    fn start_join(
+        self: &Arc<Self>,
+        addresses: Vec<SocketAddr>,
+        secret: PairingSecret,
+        pin: HostPin,
+    ) -> Reply {
         // A device already sharing a circle with others must leave it first.
         let alone = {
             let inner = self.state();
@@ -1131,7 +1230,6 @@ impl Shared {
             name,
             platform: this_platform(),
         };
-        let secret = PairingSecret::from_typed(typed);
         let key = generate_key()?;
         let deadline_ms =
             now_ms() + i64::try_from(pairing::PAIRING_WINDOW.as_millis()).unwrap_or(120_000);
@@ -1150,15 +1248,7 @@ impl Shared {
             };
             let sealing = this.config.sealing.clone();
             let joined = pairing::join_sealed(
-                address,
-                &nets,
-                &dir,
-                key,
-                &secret,
-                HostPin::None,
-                info,
-                &sealing,
-                confirm,
+                &addresses, &nets, &dir, key, &secret, pin, info, &sealing, confirm,
             )
             .await;
             match joined {
@@ -1913,6 +2003,9 @@ impl Shared {
                 "role": p.role,
                 "phase": p.phase,
                 "code": p.code,
+                "code_spent": p.code_spent,
+                "qr": p.qr,
+                "addresses": p.addresses,
                 "room": p.room,
                 "port": p.port,
                 "comparison": p.comparison,
