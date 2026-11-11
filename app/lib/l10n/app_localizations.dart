@@ -1435,6 +1435,24 @@ abstract class L10n {
   /// **'Could not fetch the pasted files. Is the other device nearby and Zerohop open there?'**
   String get clipPasteFailed;
 
+  /// No description provided for @clipFilesNeedSetup.
+  ///
+  /// In en, this message translates to:
+  /// **'To paste files here, turn on Zerohop under File Providers in System Settings'**
+  String get clipFilesNeedSetup;
+
+  /// No description provided for @clipFilesSetUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get clipFilesSetUp;
+
+  /// No description provided for @clipFilesSetUpFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Files copied on {name}. To paste them, turn on Zerohop under File Providers in System Settings'**
+  String clipFilesSetUpFirst(String name);
+
   /// No description provided for @clipDeniedAsk.
   ///
   /// In en, this message translates to:

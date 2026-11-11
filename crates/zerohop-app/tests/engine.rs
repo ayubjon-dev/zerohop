@@ -1166,6 +1166,34 @@ fn pasting_twice_fetches_once() {
     assert_eq!(first["ok"]["paths"], second["ok"]["paths"]);
 }
 
+/// Finder asks for each file of a paste on its own, all at once.
+#[test]
+fn pastes_asked_at_once_fetch_once() {
+    let (a, b) = paired_sides();
+    turn_on(&a);
+    turn_on(&b);
+    let source = tempfile::tempdir().unwrap();
+    let one = write(source.path(), "one.bin", &[1; 300_000]);
+    let two = write(source.path(), "two.bin", &[2; 300_000]);
+    copy_files(&b, &[one, two]);
+    let offer = files_offered(&a);
+    let a = Arc::new(a);
+    let asks: Vec<_> = (0..4)
+        .map(|_| {
+            let a = Arc::clone(&a);
+            let id = offer["id"].clone();
+            std::thread::spawn(move || a.call_now("paste_files", json!({ "id": id })))
+        })
+        .collect();
+    let answers: Vec<Value> = asks.into_iter().map(|t| t.join().unwrap()).collect();
+    for answer in &answers {
+        assert_eq!(answer["ok"]["folder"], answers[0]["ok"]["folder"]);
+    }
+    let base = PathBuf::from(answers[0]["ok"]["folder"].as_str().unwrap());
+    let folders = std::fs::read_dir(base.parent().unwrap()).unwrap().count();
+    assert_eq!(folders, 1);
+}
+
 #[test]
 fn a_newer_copy_takes_the_files_back() {
     let (a, b) = paired_sides();
@@ -1207,4 +1235,62 @@ fn an_unknown_paste_is_refused() {
     turn_on(&a);
     let pasted = a.call_now("paste_files", json!({ "id": "00".repeat(16) }));
     assert_eq!(pasted["error"]["kind"], "clip_gone");
+}
+
+/// A Mac shows the list as placeholders and later takes each file from the
+/// paste's folder by its place in the list, so the two must agree.
+#[test]
+fn the_list_names_files_where_the_paste_puts_them() {
+    let (a, b) = paired_sides();
+    turn_on(&a);
+    turn_on(&b);
+    let source = tempfile::tempdir().unwrap();
+    let mut copied = vec![write(source.path(), "note.txt", b"listed")];
+    // A name this system would not keep as it is.
+    if cfg!(not(windows)) {
+        copied.push(write(source.path(), "a:b.txt", b"renamed"));
+    }
+    let album = source.path().join("album");
+    std::fs::create_dir(&album).unwrap();
+    write(&album, "one.jpg", &[1; 2000]);
+    copied.push(album.to_string_lossy().into_owned());
+    copy_files(&b, &copied);
+    let offer = files_offered(&a);
+
+    let listed = a.call_now("clip_files_list", json!({ "id": offer["id"] }));
+    let items = listed["ok"]["items"].as_array().unwrap().clone();
+    assert_eq!(items.len(), copied.len() + 1);
+    let album_item = items
+        .iter()
+        .find(|i| i["path"] == json!(["album"]))
+        .unwrap();
+    assert_eq!(album_item["dir"], true);
+    let photo = items
+        .iter()
+        .find(|i| i["path"] == json!(["album", "one.jpg"]))
+        .unwrap();
+    assert_eq!(photo["dir"], false);
+    assert_eq!(photo["size"], 2000);
+
+    let pasted = a.call_now("paste_files", json!({ "id": offer["id"] }));
+    let folder = PathBuf::from(pasted["ok"]["folder"].as_str().unwrap());
+    for item in &items {
+        let mut path = folder.clone();
+        for part in item["path"].as_array().unwrap() {
+            path.push(part.as_str().unwrap());
+        }
+        let meta = std::fs::metadata(&path).unwrap();
+        assert_eq!(meta.is_dir(), item["dir"] == true, "{}", path.display());
+        if !meta.is_dir() {
+            assert_eq!(json!(meta.len()), item["size"], "{}", path.display());
+        }
+    }
+}
+
+#[test]
+fn an_unknown_list_is_refused() {
+    let (a, _b) = paired_sides();
+    turn_on(&a);
+    let listed = a.call_now("clip_files_list", json!({ "id": "00".repeat(16) }));
+    assert_eq!(listed["error"]["kind"], "clip_gone");
 }

@@ -66,6 +66,7 @@ Snapshot _snapshot() => Snapshot({
   ClipboardSupport support, {
   Map<String, Object?> read = const {'state': 'empty'},
   bool pastesFiles = false,
+  String? placed,
 }) {
   final sent = <MethodCall>[];
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -73,7 +74,11 @@ Snapshot _snapshot() => Snapshot({
         call,
       ) async {
         sent.add(call);
-        return call.method == 'clipboardRead' ? read : null;
+        return switch (call.method) {
+          'clipboardRead' => read,
+          'clipboardFiles' => placed,
+          _ => null,
+        };
       });
   final core = _RecordingCore();
   final state = AppState(
@@ -153,6 +158,68 @@ void main() {
       final app = _app(ClipboardSupport.automatic);
       await app.state.platform.offerPastedFiles({'id': 'ab' * 16});
       expect(app.sent, isEmpty);
+    });
+  });
+
+  group('on a Mac', () {
+    final offer = {'id': 'ab' * 16, 'ttl_ms': 120000, 'from': 'Windows PC'};
+
+    test('files ready to paste are announced', () async {
+      final app = _app(
+        ClipboardSupport.automatic,
+        pastesFiles: true,
+        placed: 'ready',
+      );
+      await app.state.offerFiles(offer);
+      expect(app.state.toast!(t), t.clipFilesArrived('Windows PC'));
+      expect(app.state.filesNeedSetup, isFalse);
+    });
+
+    test('until the file provider is on, the owner is told how', () async {
+      final app = _app(
+        ClipboardSupport.automatic,
+        pastesFiles: true,
+        placed: 'disabled',
+      );
+      await app.state.offerFiles(offer);
+      expect(app.state.toast!(t), t.clipFilesSetUpFirst('Windows PC'));
+      expect(app.state.filesNeedSetup, isTrue);
+    });
+
+    test('the system\'s word on the file provider reaches the app', () async {
+      final app = _app(ClipboardSupport.automatic, pastesFiles: true);
+      final heard = <String>[];
+      app.state.platform.listenToClipboard(
+        onCopied: (_) {},
+        onAccess: (_) {},
+        onSend: (_) async => 'sent',
+        onShared: (_) {},
+        onFilesState: heard.add,
+      );
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+            'dev.zerohop/platform',
+            const StandardMethodCodec().encodeMethodCall(
+              const MethodCall('clipboardFilesState', {'state': 'ready'}),
+            ),
+            (_) {},
+          );
+      expect(heard, ['ready']);
+    });
+
+    testWidgets('settings offer the way to switch it on', (tester) async {
+      tester.view.physicalSize = const Size(900, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final app = _app(ClipboardSupport.automatic, pastesFiles: true);
+      app.state
+        ..filesState = 'disabled'
+        ..screen = Screen.settings;
+      await tester.pumpWidget(ZerohopApp(state: app.state));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text(t.clipFilesNeedSetup), findsOneWidget);
+      await tester.tap(find.text(t.clipFilesSetUp));
+      expect(app.sent.map((c) => c.method), contains('fileProviderSettings'));
     });
   });
 

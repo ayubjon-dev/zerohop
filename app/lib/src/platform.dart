@@ -74,17 +74,24 @@ class PlatformBridge {
 
   /// Files copied on another device can be pasted here, the paste itself
   /// fetching them.
-  bool get pastesFiles => _pastesFiles ?? _isWindows;
+  bool get pastesFiles => _pastesFiles ?? (_isWindows || _isMac);
 
   /// Offers files copied on another device for pasting here. Nothing of them
-  /// moves until the owner pastes.
-  Future<void> offerPastedFiles(Map<String, dynamic> offer) async {
-    if (!pastesFiles) return;
-    await _channel.invokeMethod<void>('clipboardFiles', {
+  /// moves until the owner pastes. A Mac answers whether they can be pasted
+  /// yet: "ready", or "disabled" until the owner switches on Zerohop's file
+  /// provider in System Settings.
+  Future<String?> offerPastedFiles(Map<String, dynamic> offer) async {
+    if (!pastesFiles) return null;
+    return _channel.invokeMethod<String>('clipboardFiles', {
       'id': offer['id'],
       'ttl_ms': offer['ttl_ms'],
     });
   }
+
+  /// Opens the System Settings page where Zerohop's file provider is
+  /// switched on.
+  Future<void> openFileProviderSettings() =>
+      _channel.invokeMethod<void>('fileProviderSettings');
 
   /// The owner sends the clipboard with a button rather than by copying.
   bool get sendsClipboardOnTap =>
@@ -226,6 +233,7 @@ class PlatformBridge {
     required Future<String> Function(Map<String, dynamic> copied) onSend,
     required void Function(List<String> paths) onShared,
     void Function()? onPasteFailed,
+    void Function(String state)? onFilesState,
   }) {
     _channel.setMethodCallHandler((call) async {
       final arguments = Map<String, dynamic>.from(call.arguments as Map);
@@ -240,6 +248,8 @@ class PlatformBridge {
           onShared(List<String>.from(arguments['paths'] as List));
         case 'clipboardPasteFailed':
           onPasteFailed?.call();
+        case 'clipboardFilesState':
+          onFilesState?.call(arguments['state'] as String);
       }
       return null;
     });

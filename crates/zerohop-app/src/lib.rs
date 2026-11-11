@@ -295,6 +295,9 @@ enum Request {
     PasteFiles {
         id: String,
     },
+    ClipFilesList {
+        id: String,
+    },
 }
 
 struct Device {
@@ -616,6 +619,7 @@ impl Shared {
             }
             Request::ClipFiles { paths } => self.clip_files_changed(paths).await,
             Request::PasteFiles { id } => self.paste_files(&id).await,
+            Request::ClipFilesList { id } => self.clip_files_list(&id),
         }
     }
 

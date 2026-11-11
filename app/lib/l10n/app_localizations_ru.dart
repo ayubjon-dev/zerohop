@@ -820,6 +820,18 @@ class L10nRu extends L10n {
       'Не удалось получить вставленные файлы. Другое устройство рядом и Zerohop на нём открыт?';
 
   @override
+  String get clipFilesNeedSetup =>
+      'Чтобы вставлять сюда файлы, включите Zerohop в «Поставщиках файлов» в Системных настройках';
+
+  @override
+  String get clipFilesSetUp => 'Открыть настройки';
+
+  @override
+  String clipFilesSetUpFirst(String name) {
+    return 'Файлы скопированы на $name. Чтобы вставить их, включите Zerohop в «Поставщиках файлов» в Системных настройках';
+  }
+
+  @override
   String get clipDeniedAsk =>
       'iOS не разрешила прочитать буфер. Разрешите вставку, когда iOS спросит, или проверьте Zerohop в приложении «Настройки».';
 

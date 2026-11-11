@@ -74,6 +74,17 @@ class AppState extends ChangeNotifier {
   /// What macOS lets this app read without asking.
   String clipboardAccess = 'allow';
 
+  /// Whether files copied on other devices can be pasted here: on a Mac,
+  /// "disabled" until the owner switches on Zerohop's file provider.
+  String filesState = 'unknown';
+
+  /// Files copied on other devices cannot be pasted on this Mac until the
+  /// owner switches on Zerohop's file provider in System Settings.
+  bool get filesNeedSetup =>
+      platform.pastesFiles &&
+      (snapshot?.clipboard ?? false) &&
+      filesState == 'disabled';
+
   /// Copies stay on this Mac until the owner allows reading them unasked.
   bool get clipboardNeedsAllowing =>
       platform.clipboard == ClipboardSupport.automatic &&
@@ -113,6 +124,10 @@ class AppState extends ChangeNotifier {
             onSend: _sendFromSystem,
             onShared: receiveShared,
             onPasteFailed: () => show((t) => t.clipPasteFailed),
+            onFilesState: (state) {
+              filesState = state;
+              notifyListeners();
+            },
           );
         }
       }
@@ -221,7 +236,7 @@ class AppState extends ChangeNotifier {
       case 'clipboard_apply':
         unawaited(_applyClip(event));
       case 'clipboard_files':
-        unawaited(_offerFiles(event));
+        unawaited(offerFiles(event));
     }
   }
 
@@ -381,11 +396,18 @@ class AppState extends ChangeNotifier {
 
   /// Files copied on another device: only their list has come, and the
   /// paste here fetches them.
-  Future<void> _offerFiles(Map<String, dynamic> event) async {
+  @visibleForTesting
+  Future<void> offerFiles(Map<String, dynamic> event) async {
     if (!platform.pastesFiles) return;
-    await platform.offerPastedFiles(event);
+    final placed = await platform.offerPastedFiles(event);
     final name = event['from'] as String;
-    show((t) => t.clipFilesArrived(name));
+    switch (placed) {
+      case null || 'ready':
+        show((t) => t.clipFilesArrived(name));
+      case 'disabled':
+        filesState = 'disabled';
+        show((t) => t.clipFilesSetUpFirst(name));
+    }
   }
 
   Future<Map<String, dynamic>?> _offerCopied(

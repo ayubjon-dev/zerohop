@@ -16,8 +16,9 @@ use serde_json::{Value, json};
 use zerohop_core::circle::random_bytes;
 use zerohop_core::clip::{ClipPart, ClipSink, MAX_CLIP_TTL, OutgoingClip, ReceivedClip};
 use zerohop_core::ledger::DeviceId;
+use zerohop_core::names::TargetOs;
 use zerohop_core::node::{Node, NodeError};
-use zerohop_core::receive::ReceiveFolder;
+use zerohop_core::receive::{ReceiveFolder, SafeItem, validate_manifest};
 use zerohop_core::transfer::{
     self, Approver, Budgets, OfferOutcome, OfferSummary, Outgoing, ReceiveConfig, ReceiveMode,
     ReceiveSettings, TransferError,
@@ -69,10 +70,21 @@ struct IncomingFiles {
     clip_id: [u8; 16],
     peer: DeviceId,
     manifest: [u8; 32],
+    /// The list with every name already made safe for this system, as the
+    /// paste will write it.
+    items: Arc<Vec<SafeItem>>,
     until: Instant,
     /// What an earlier paste of the same clip left, so pasting twice
     /// fetches once.
-    pasted: Option<Vec<String>>,
+    pasted: Option<Pasted>,
+}
+
+/// Where a paste put the files: the folder made for it, and what is at its
+/// top level.
+#[derive(Clone)]
+struct Pasted {
+    folder: String,
+    paths: Vec<String>,
 }
 
 /// A change to one device's clipboard rules. Unset fields stay as they are.
@@ -415,8 +427,8 @@ impl Shared {
                 .as_ref()
                 .filter(|f| f.clip_id == clip_id && f.until > Instant::now())
                 .ok_or_else(|| AppError::new("clip_gone"))?;
-            if let Some(paths) = &files.pasted {
-                return Ok(json!({ "paths": paths }));
+            if let Some(pasted) = &files.pasted {
+                return Ok(json!({ "paths": pasted.paths, "folder": pasted.folder }));
             }
             (files.peer, files.manifest)
         };
@@ -438,8 +450,22 @@ impl Shared {
         let request = ClipPull { clip_id, item: 0 };
         let lock = self.peer_lock(peer);
         let Ok(_guard) = tokio::time::timeout(LIFETIME, lock.lock()).await else {
+            let _ = std::fs::remove_dir_all(&folder_path);
             return Err(AppError::new("unreachable"));
         };
+        // A paste of several files can ask for them all at once; the first
+        // fetches, and the others find its result once they get the lock.
+        if let Some(pasted) = self
+            .state()
+            .clip
+            .incoming_files
+            .as_ref()
+            .filter(|f| f.clip_id == clip_id)
+            .and_then(|f| f.pasted.clone())
+        {
+            let _ = std::fs::remove_dir_all(&folder_path);
+            return Ok(json!({ "paths": pasted.paths, "folder": pasted.folder }));
+        }
         for address in self.candidates(&peer) {
             match node
                 .pull_clip(peer, address, &request, manifest, &cfg)
@@ -447,7 +473,10 @@ impl Shared {
             {
                 Ok(OfferOutcome::Received(_)) => {
                     self.remember_address(peer, address);
-                    let paths = pasted_paths(&folder_path);
+                    let pasted = Pasted {
+                        folder: folder_path.to_string_lossy().into_owned(),
+                        paths: pasted_paths(&folder_path),
+                    };
                     if let Some(files) = self
                         .state()
                         .clip
@@ -455,9 +484,9 @@ impl Shared {
                         .as_mut()
                         .filter(|f| f.clip_id == clip_id)
                     {
-                        files.pasted = Some(paths.clone());
+                        files.pasted = Some(pasted.clone());
                     }
-                    return Ok(json!({ "paths": paths }));
+                    return Ok(json!({ "paths": pasted.paths, "folder": pasted.folder }));
                 }
                 Ok(OfferOutcome::Declined(_)) => {
                     let _ = std::fs::remove_dir_all(&folder_path);
@@ -471,10 +500,40 @@ impl Shared {
         Err(AppError::new("unreachable"))
     }
 
+    /// The files copied on another device, by the names a paste here will
+    /// give them. A Mac shows them in Finder as placeholders before any of
+    /// their contents has come.
+    pub(super) fn clip_files_list(&self, id: &str) -> Reply {
+        let clip_id = unhex::<16>(id)?;
+        let items = self
+            .state()
+            .clip
+            .incoming_files
+            .as_ref()
+            .filter(|f| f.clip_id == clip_id && f.until > Instant::now())
+            .map(|f| Arc::clone(&f.items))
+            .ok_or_else(|| AppError::new("clip_gone"))?;
+        let list: Vec<Value> = items
+            .iter()
+            .map(|i| {
+                json!({
+                    "index": i.index,
+                    "path": i.path,
+                    "dir": i.kind == ItemKind::Directory,
+                    "size": i.size,
+                    "mtime_ms": i.mtime_ms,
+                    "created_ms": i.created_ms,
+                })
+            })
+            .collect();
+        Ok(json!({ "items": list }))
+    }
+
     /// Whether the owner can paste files here that have not arrived yet, the
     /// paste itself fetching them. Test builds allow it everywhere.
     fn can_paste_files_here(&self) -> bool {
-        cfg!(windows) || (cfg!(feature = "dev-loopback") && self.state().allow_loopback)
+        cfg!(any(windows, target_os = "macos"))
+            || (cfg!(feature = "dev-loopback") && self.state().allow_loopback)
     }
 
     /// Takes the list of files copied on another device, and tells the
@@ -486,15 +545,18 @@ impl Shared {
         let Ok(manifest) = transfer::manifest_of(&list.items) else {
             return;
         };
+        // The same check a paste makes, done now: a list that could never
+        // be pasted is not offered, and the names shown are the ones a paste
+        // will write.
+        let Ok(valid) = validate_manifest(&list.items, list.total_bytes, TargetOs::current())
+        else {
+            return;
+        };
         let Some(node) = self.node().ok() else {
             return;
         };
-        let files = list
-            .items
-            .iter()
-            .filter(|i| i.kind == ItemKind::File)
-            .count();
-        let folders = list
+        let files = valid.file_count;
+        let folders = valid
             .items
             .iter()
             .filter(|i| i.kind == ItemKind::Directory && i.path.len() == 1)
@@ -503,6 +565,7 @@ impl Shared {
             clip_id,
             peer: *peer,
             manifest,
+            items: Arc::new(valid.items),
             until: Instant::now() + ttl,
             pasted: None,
         });

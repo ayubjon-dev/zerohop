@@ -1066,10 +1066,16 @@ class _DeviceClipboardCard extends StatelessWidget {
     final enabled = state.snapshot?.clipboard ?? false;
     final both = device.clipboard.bothWays;
     final allowing = state.clipboardNeedsAllowing;
+    final setUp =
+        state.filesNeedSetup &&
+        device.clipboard.receive &&
+        device.clipboard.files;
     final status = !enabled
         ? t.clipTurnOnFirst
         : allowing
         ? t.clipNeedsAllow
+        : setUp
+        ? t.clipFilesNeedSetup
         : both
         ? t.clipboardOnDevice
         : t.clipboardOffDevice;
@@ -1101,6 +1107,12 @@ class _DeviceClipboardCard extends StatelessWidget {
                 label: t.clipAllow,
                 height: 44,
                 onPressed: state.platform.openClipboardSettings,
+              )
+            else if (setUp)
+              ZButton(
+                label: t.clipFilesSetUp,
+                height: 44,
+                onPressed: state.platform.openFileProviderSettings,
               )
             else
               ZButton(
@@ -1141,10 +1153,13 @@ class _HomeClipboardCard extends StatelessWidget {
     final enabled = snapshot.clipboard;
     final oneTap = state.platform.sendsClipboardOnTap;
     final allowing = state.clipboardNeedsAllowing;
+    final setUp = state.filesNeedSetup;
     final status = !enabled
         ? t.clipboardOff
         : allowing
         ? t.clipNeedsAllow
+        : setUp
+        ? t.clipFilesNeedSetup
         : state.platform.clipboard == ClipboardSupport.tapWhileOpen
         ? t.clipboardWhileOpen
         : oneTap
@@ -1183,6 +1198,12 @@ class _HomeClipboardCard extends StatelessWidget {
                 label: t.clipAllow,
                 height: 44,
                 onPressed: state.platform.openClipboardSettings,
+              )
+            else if (setUp)
+              ZButton(
+                label: t.clipFilesSetUp,
+                height: 44,
+                onPressed: state.platform.openFileProviderSettings,
               )
             else if (oneTap)
               ZButton(

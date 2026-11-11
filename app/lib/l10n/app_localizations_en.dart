@@ -809,6 +809,18 @@ class L10nEn extends L10n {
       'Could not fetch the pasted files. Is the other device nearby and Zerohop open there?';
 
   @override
+  String get clipFilesNeedSetup =>
+      'To paste files here, turn on Zerohop under File Providers in System Settings';
+
+  @override
+  String get clipFilesSetUp => 'Open settings';
+
+  @override
+  String clipFilesSetUpFirst(String name) {
+    return 'Files copied on $name. To paste them, turn on Zerohop under File Providers in System Settings';
+  }
+
+  @override
   String get clipDeniedAsk =>
       'iOS did not let Zerohop read the clipboard. Allow pasting when iOS asks, or check Zerohop in the Settings app.';
 

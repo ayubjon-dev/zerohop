@@ -471,6 +471,16 @@
     }
   },
   "clipPasteFailed": "Could not fetch the pasted files. Is the other device nearby and Zerohop open there?",
+  "clipFilesNeedSetup": "To paste files here, turn on Zerohop under File Providers in System Settings",
+  "clipFilesSetUp": "Open settings",
+  "clipFilesSetUpFirst": "Files copied on {name}. To paste them, turn on Zerohop under File Providers in System Settings",
+  "@clipFilesSetUpFirst": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "clipDeniedAsk": "iOS did not let Zerohop read the clipboard. Allow pasting when iOS asks, or check Zerohop in the Settings app.",
   "clipTileTitle": "Button in quick settings",
   "clipTileSub": "Send what you copied from quick settings or the notification, without opening the app.",
