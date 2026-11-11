@@ -511,6 +511,36 @@ abstract class L10n {
   /// **'Disconnect {name}?'**
   String removeTitle(String name);
 
+  /// No description provided for @ownerCheckTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm it\'s you'**
+  String get ownerCheckTitle;
+
+  /// No description provided for @ownerReasonRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'remove {name} from your devices'**
+  String ownerReasonRemove(String name);
+
+  /// No description provided for @ownerReasonDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'turn away the new device {name}'**
+  String ownerReasonDecline(String name);
+
+  /// No description provided for @ownerReasonStartOver.
+  ///
+  /// In en, this message translates to:
+  /// **'disconnect this device from your others'**
+  String get ownerReasonStartOver;
+
+  /// No description provided for @ownerCheckRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing changed: the check that it\'s you didn\'t go through.'**
+  String get ownerCheckRefused;
+
   /// No description provided for @removeBody.
   ///
   /// In en, this message translates to:

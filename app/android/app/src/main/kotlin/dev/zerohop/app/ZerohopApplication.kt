@@ -4,14 +4,18 @@ import android.Manifest
 import android.app.Activity
 import android.app.Application
 import android.app.DownloadManager
+import android.app.KeyguardManager
 import android.app.StatusBarManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
+import android.hardware.biometrics.BiometricManager.Authenticators
+import android.hardware.biometrics.BiometricPrompt
 import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -43,6 +47,7 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
     private var awake = false
     private var askedNotifications = false
     private var scanning: MethodChannel.Result? = null
+    private var checkingOwner: MethodChannel.Result? = null
     private val wakeLock by lazy {
         getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "zerohop:transfer")
@@ -126,6 +131,7 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
                 result.success(null)
             }
             "scanQr" -> scan(call, result)
+            "confirmOwner" -> confirmOwner(call, result)
             "clipboardReady" -> {
                 ready = true
                 while (waiting.isNotEmpty()) waiting.removeFirst().invoke()
@@ -254,6 +260,73 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
         from.startActivity(ScanActivity.intent(from, words))
     }
 
+    /**
+     * The system's own check that the owner is present, before Zerohop signs
+     * a revocation: a strong biometric or the screen lock's PIN, pattern or
+     * password. A phone without a screen lock has nothing to check with.
+     */
+    private fun confirmOwner(call: MethodCall, result: MethodChannel.Result) {
+        val from = resumed
+        if (checkingOwner != null || from == null) {
+            result.error("unavailable", null, null)
+            return
+        }
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        if (keyguard == null || !keyguard.isDeviceSecure) {
+            result.success("unavailable")
+            return
+        }
+        val title = call.argument<String>("title") ?: ""
+        val reason = (call.argument<String>("reason") ?: "").replaceFirstChar { it.uppercase() }
+        checkingOwner = result
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                BiometricPrompt.Builder(from)
+                    .setTitle(title)
+                    .setSubtitle(reason)
+                    .setAllowedAuthenticators(
+                        Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL,
+                    )
+                    .build()
+                    .authenticate(CancellationSignal(), mainExecutor, ownerCallback)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                @Suppress("DEPRECATION")
+                BiometricPrompt.Builder(from)
+                    .setTitle(title)
+                    .setSubtitle(reason)
+                    .setDeviceCredentialAllowed(true)
+                    .build()
+                    .authenticate(CancellationSignal(), mainExecutor, ownerCallback)
+            else -> {
+                @Suppress("DEPRECATION")
+                val intent = keyguard.createConfirmDeviceCredentialIntent(title, reason)
+                if (intent == null) {
+                    ownerChecked("unavailable")
+                } else {
+                    @Suppress("DEPRECATION")
+                    from.startActivityForResult(intent, OWNER_CHECK_REQUEST)
+                }
+            }
+        }
+    }
+
+    private val ownerCallback = object : BiometricPrompt.AuthenticationCallback() {
+        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) =
+            ownerChecked("passed")
+
+        // Cancelled, locked out, or interrupted. A single failed finger is
+        // not final, and arrives elsewhere.
+        override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) =
+            ownerChecked("refused")
+    }
+
+    /** How the owner check went: passed, refused or unavailable, exactly once. */
+    fun ownerChecked(answer: String) {
+        val result = checkingOwner ?: return
+        checkingOwner = null
+        result.success(answer)
+    }
+
     /** What the scanner saw: a pairing link, null for a cancel, or an error. */
     fun scanned(code: String?, error: String?) {
         val result = scanning ?: return
@@ -288,6 +361,7 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
 
     companion object {
         const val NOTIFICATIONS_REQUEST = 1
+        const val OWNER_CHECK_REQUEST = 2
         private const val MAX_TRANSFER_WAKE_MS = 2 * 60 * 60 * 1000L
     }
 }

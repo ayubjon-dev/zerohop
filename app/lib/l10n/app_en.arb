@@ -221,6 +221,25 @@
       }
     }
   },
+  "ownerCheckTitle": "Confirm it's you",
+  "ownerReasonRemove": "remove {name} from your devices",
+  "@ownerReasonRemove": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ownerReasonDecline": "turn away the new device {name}",
+  "@ownerReasonDecline": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ownerReasonStartOver": "disconnect this device from your others",
+  "ownerCheckRefused": "Nothing changed: the check that it's you didn't go through.",
   "removeBody": "It will no longer be able to exchange files with your other devices. Anything it already received stays on it.",
   "removeAction": "Disconnect",
   "cancelAction": "Cancel",

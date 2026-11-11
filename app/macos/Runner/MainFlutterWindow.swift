@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import LocalAuthentication
 import ServiceManagement
 
 class MainFlutterWindow: NSWindow {
@@ -83,12 +84,35 @@ enum PlatformChannel {
     case "clipboardApply":
       clipboard.apply(args ?? [:])
       result(nil)
+    case "confirmOwner":
+      OwnerCheck.run(reason: args?["reason"] as? String ?? "", result: result)
     case "clipboardSettings":
       let pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_Pasteboard"
       if let url = URL(string: pane) { NSWorkspace.shared.open(url) }
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+}
+
+/// The system's own check that the owner is present, before Zerohop signs a
+/// revocation: Touch ID or the login password. A device with no password has
+/// nothing to check with, which Dart treats as allowed.
+enum OwnerCheck {
+  static func run(reason: String, result: @escaping FlutterResult) {
+    let context = LAContext()
+    var problem: NSError?
+    guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &problem) else {
+      let unset =
+        problem?.domain == LAErrorDomain && problem?.code == LAError.Code.passcodeNotSet.rawValue
+      result(unset ? "unavailable" : "refused")
+      return
+    }
+    context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { passed, _ in
+      // The context has to live until the answer arrives.
+      _ = context
+      DispatchQueue.main.async { result(passed ? "passed" : "refused") }
     }
   }
 }

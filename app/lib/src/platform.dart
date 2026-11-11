@@ -11,18 +11,33 @@ const _channel = MethodChannel('dev.zerohop/platform');
 /// How this system lets copied content leave it.
 enum ClipboardSupport { none, automatic, oneTap }
 
+/// How the system's own check that the owner is present went.
+enum OwnerCheck {
+  /// The owner confirmed with a fingerprint, face, PIN or password.
+  passed,
+
+  /// The device has no screen lock or similar to check with.
+  unavailable,
+
+  /// Cancelled, failed, or the check could not run.
+  refused,
+}
+
 class PlatformBridge {
   const PlatformBridge({
     ClipboardSupport? clipboard,
     bool? photos,
     bool? scanner,
+    bool? ownerCheck,
   }) : _clipboard = clipboard,
        _photos = photos,
-       _scanner = scanner;
+       _scanner = scanner,
+       _ownerCheck = ownerCheck;
 
   final ClipboardSupport? _clipboard;
   final bool? _photos;
   final bool? _scanner;
+  final bool? _ownerCheck;
 
   bool get _isMac => Platform.isMacOS;
   bool get _isAndroid => Platform.isAndroid;
@@ -44,6 +59,36 @@ class PlatformBridge {
   /// device key. On Windows the core asks the system itself.
   Future<Uint8List?> deviceSecret() =>
       _channel.invokeMethod<Uint8List>('deviceSecret');
+
+  /// Systems whose own lock screen can confirm that the owner is present.
+  bool get canConfirmOwner =>
+      _ownerCheck ?? (_isMac || _isAndroid || _isWindows || Platform.isIOS);
+
+  /// Asks the system to confirm that the owner is present, with Touch ID,
+  /// Face ID, a fingerprint, Windows Hello or the device's password. [reason]
+  /// completes "Zerohop is trying to ...". Anything unexpected counts as
+  /// refused, so a broken check never lets a removal through.
+  Future<OwnerCheck> confirmOwner({
+    required String title,
+    required String reason,
+  }) async {
+    if (!canConfirmOwner) return OwnerCheck.unavailable;
+    try {
+      final answer = await _channel.invokeMethod<String>('confirmOwner', {
+        'title': title,
+        'reason': reason,
+      });
+      return switch (answer) {
+        'passed' => OwnerCheck.passed,
+        'unavailable' => OwnerCheck.unavailable,
+        _ => OwnerCheck.refused,
+      };
+    } on PlatformException {
+      return OwnerCheck.refused;
+    } on MissingPluginException {
+      return OwnerCheck.refused;
+    }
+  }
 
   /// Phones can read a pairing QR code with their camera.
   bool get canScanQr => _scanner ?? (_isAndroid || Platform.isIOS);

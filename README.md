@@ -37,7 +37,7 @@ There are no published releases yet. To try it, build it from source.
 ### Known limits
 
 - The device key has to be in memory while the app runs, because the secure chips in Macs and phones do not offer Ed25519.
-- Someone holding your unlocked device can use it as you, and can remove your other devices.
+- Someone holding your unlocked device can use it as you. Removing your other devices asks for your fingerprint, face or device password first, but only where the device has one set up.
 - On Android, copied text can stay on the clipboard past two minutes if Zerohop is in the background when it expires.
 - Other apps on the receiving device can read what arrives on its clipboard.
 - With the optional “To Zerohop” text entry turned on, an app on the phone's screen can send its own text to your clipboard. It is off by default.

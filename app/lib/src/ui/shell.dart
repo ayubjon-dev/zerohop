@@ -638,7 +638,10 @@ class Notices extends StatelessWidget {
                         actions: [
                           ZButton(
                             label: t.startOver,
-                            onPressed: state.startOver,
+                            onPressed: () => state.startOver(
+                              title: t.ownerCheckTitle,
+                              reason: t.ownerReasonStartOver,
+                            ),
                             kind: ZButtonKind.primary,
                             height: 44,
                           ),
@@ -653,15 +656,23 @@ class Notices extends StatelessWidget {
                         actions: [
                           ZButton(
                             label: t.removeAction,
-                            onPressed: () =>
-                                state.confirmDevice(device.id, false),
+                            onPressed: () => state.confirmDevice(
+                              device.id,
+                              false,
+                              title: t.ownerCheckTitle,
+                              reason: t.ownerReasonDecline(device.name),
+                            ),
                             kind: ZButtonKind.dangerSoft,
                             height: 44,
                           ),
                           ZButton(
                             label: t.allow,
-                            onPressed: () =>
-                                state.confirmDevice(device.id, true),
+                            onPressed: () => state.confirmDevice(
+                              device.id,
+                              true,
+                              title: t.ownerCheckTitle,
+                              reason: t.ownerReasonDecline(device.name),
+                            ),
                             kind: ZButtonKind.primary,
                             height: 44,
                           ),
