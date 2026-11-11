@@ -1,2 +1,5 @@
 /* Shown when iOS asks for access to the local network. */
 "NSLocalNetworkUsageDescription" = "Zerohop finds your own devices on this network and sends files directly to them.";
+
+/* Shown when iOS asks for access to the camera, used only to read a pairing QR code. */
+"NSCameraUsageDescription" = "Zerohop uses the camera only to read the QR code shown by your other device while you link it.";

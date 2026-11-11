@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Only to read a pairing QR code, while the scanner is on screen. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
     <!-- The device key lives in app storage and must never leave in a backup. -->
     <application
         android:label="Zerohop"
@@ -38,6 +41,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- The camera screen for a pairing QR code. Never exported. -->
+        <activity
+            android:name=".ScanActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/ScanTheme" />
         <!-- Reads the clipboard for a moment, on the owner's tap. Never exported:
              another app must not be able to push content to the owner's devices. -->
         <activity

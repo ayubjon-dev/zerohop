@@ -21,11 +21,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use zerohop_core::address::LocalNetworks;
-use zerohop_core::circle::{Circle, generate_key};
+use zerohop_core::circle::{Circle, KeySealing, generate_key};
 use zerohop_core::clip::{ClipPart, ClipSink, MAX_CLIP_TTL, OutgoingClip, ReceivedClip};
 use zerohop_core::ledger::{DeviceId, Platform};
 use zerohop_core::node::{Node, NodeError};
-use zerohop_core::pairing::{self, HostPin, PairingError, PairingPrompt, PairingSecret};
+use zerohop_core::pairing::{
+    self, HostPin, PairingError, PairingListener, PairingPrompt, PairingSecret,
+};
 use zerohop_core::receive::{ReceiveFolder, SEGMENT_SIZE};
 use zerohop_core::session::{LocalInfo, Session, SessionError, lock};
 use zerohop_core::tls::{self, ALPN_NORMAL, ALPN_PAIRING, PeerRule, TlsError};
@@ -325,6 +327,197 @@ async fn a_qr_joiner_refuses_a_host_with_the_wrong_key() {
     )
     .await;
     assert!(matches!(result, Err(PairingError::Tls(_))));
+}
+
+#[tokio::test]
+async fn a_qr_code_pairs_while_a_typed_code_is_also_open() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let joiner_dir = tempfile::tempdir().unwrap();
+    let mut circle = Circle::create(host_dir.path(), "host").unwrap();
+    let host_id = circle.device_id();
+    let (code_l, _) = listener().await;
+    let (qr_l, qr_addr) = listener().await;
+    let qr = PairingSecret::new_qr().unwrap();
+    let scanned = PairingSecret::from_qr_bytes(qr.qr_bytes().unwrap());
+    let path = joiner_dir.path().to_path_buf();
+    let joining = tokio::spawn(async move {
+        pairing::join(
+            qr_addr,
+            &nets(),
+            &path,
+            generate_key().unwrap(),
+            &scanned,
+            HostPin::Key(host_id),
+            info("phone"),
+            yes,
+        )
+        .await
+    });
+    let entries = vec![
+        PairingListener {
+            listener: code_l,
+            secret: PairingSecret::new_code().unwrap(),
+        },
+        PairingListener {
+            listener: qr_l,
+            secret: qr,
+        },
+    ];
+    let paired = pairing::host_any(entries, &nets(), &mut circle, info("host"), yes, || {})
+        .await
+        .unwrap();
+    let joined = joining.await.unwrap().unwrap();
+    assert_eq!(paired.device, joined.device_id());
+}
+
+#[tokio::test]
+async fn a_spent_code_leaves_the_qr_code_working() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let attacker_dir = tempfile::tempdir().unwrap();
+    let joiner_dir = tempfile::tempdir().unwrap();
+    let mut circle = Circle::create(host_dir.path(), "host").unwrap();
+    let host_id = circle.device_id();
+    let (code_l, code_addr) = listener().await;
+    let (qr_l, qr_addr) = listener().await;
+    let qr = PairingSecret::new_qr().unwrap();
+    let scanned = PairingSecret::from_qr_bytes(qr.qr_bytes().unwrap());
+    let (spent_tx, spent_rx) = tokio::sync::oneshot::channel::<()>();
+    let attacker_path = attacker_dir.path().to_path_buf();
+    let path = joiner_dir.path().to_path_buf();
+    let joining = tokio::spawn(async move {
+        let guess = pairing::join(
+            code_addr,
+            &nets(),
+            &attacker_path,
+            generate_key().unwrap(),
+            &PairingSecret::from_typed("000000"),
+            HostPin::None,
+            info("attacker"),
+            yes,
+        )
+        .await;
+        assert!(guess.is_err());
+        spent_rx.await.unwrap();
+        // The spent code's listener is closed.
+        assert!(TcpStream::connect(code_addr).await.is_err());
+        pairing::join(
+            qr_addr,
+            &nets(),
+            &path,
+            generate_key().unwrap(),
+            &scanned,
+            HostPin::Key(host_id),
+            info("phone"),
+            yes,
+        )
+        .await
+    });
+    let entries = vec![
+        PairingListener {
+            listener: code_l,
+            secret: PairingSecret::from_typed("123456"),
+        },
+        PairingListener {
+            listener: qr_l,
+            secret: qr,
+        },
+    ];
+    let mut spent_tx = Some(spent_tx);
+    let paired = pairing::host_any(entries, &nets(), &mut circle, info("host"), yes, || {
+        if let Some(tx) = spent_tx.take() {
+            tx.send(()).unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let joined = joining.await.unwrap().unwrap();
+    assert_eq!(paired.device, joined.device_id());
+    assert_eq!(circle.ledger().membership().members.len(), 2);
+}
+
+#[tokio::test]
+async fn a_spent_code_ends_pairing_when_nothing_else_is_open() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let joiner_dir = tempfile::tempdir().unwrap();
+    let mut circle = Circle::create(host_dir.path(), "host").unwrap();
+    let (l, addr) = listener().await;
+    let path = joiner_dir.path().to_path_buf();
+    let joining = tokio::spawn(async move {
+        pairing::join(
+            addr,
+            &nets(),
+            &path,
+            generate_key().unwrap(),
+            &PairingSecret::from_typed("000000"),
+            HostPin::None,
+            info("attacker"),
+            yes,
+        )
+        .await
+    });
+    let entries = vec![PairingListener {
+        listener: l,
+        secret: PairingSecret::from_typed("123456"),
+    }];
+    let calls = AtomicUsize::new(0);
+    let result = pairing::host_any(entries, &nets(), &mut circle, info("host"), yes, || {
+        calls.fetch_add(1, Ordering::SeqCst);
+    })
+    .await;
+    assert!(result.is_err());
+    assert!(joining.await.unwrap().is_err());
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn a_qr_joiner_moves_on_from_an_address_that_does_not_answer() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let joiner_dir = tempfile::tempdir().unwrap();
+    let mut circle = Circle::create(host_dir.path(), "host").unwrap();
+    let host_id = circle.device_id();
+    let (l, addr) = listener().await;
+    // Bound and dropped, so nothing listens there any more.
+    let (gone, dead) = listener().await;
+    drop(gone);
+    let qr = PairingSecret::new_qr().unwrap();
+    let scanned = PairingSecret::from_qr_bytes(qr.qr_bytes().unwrap());
+    let path = joiner_dir.path().to_path_buf();
+    let joining = tokio::spawn(async move {
+        pairing::join_sealed(
+            &[dead, addr],
+            &nets(),
+            &path,
+            generate_key().unwrap(),
+            &scanned,
+            HostPin::Key(host_id),
+            info("phone"),
+            &KeySealing::default(),
+            yes,
+        )
+        .await
+    });
+    pairing::host(l, &nets(), &mut circle, &qr, info("host"), yes)
+        .await
+        .unwrap();
+    assert!(joining.await.unwrap().is_ok());
+}
+
+#[tokio::test]
+async fn a_qr_joiner_refuses_addresses_off_the_local_network() {
+    let dir = tempfile::tempdir().unwrap();
+    let result = pairing::join_sealed(
+        &["8.8.8.8:53319".parse().unwrap()],
+        &nets(),
+        dir.path(),
+        generate_key().unwrap(),
+        &PairingSecret::new_qr().unwrap(),
+        HostPin::Key([9; 32]),
+        info("phone"),
+        &KeySealing::default(),
+        yes,
+    )
+    .await;
+    assert!(matches!(result, Err(PairingError::Tls(TlsError::NotLocal))));
 }
 
 // ---- Transport ----

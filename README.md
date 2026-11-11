@@ -9,7 +9,7 @@ Private file transfer between your own devices, directly over your local network
 ## What it does
 
 - **Sends files and folders** between devices you have paired, byte for byte. Interrupted transfers continue where they stopped.
-- **Pairing happens once.** You type a six-digit code and compare a number on both screens. After that, every device in your circle recognizes the others.
+- **Pairing happens once.** You scan a QR code with your phone or type a six-digit code, then compare a number on both screens. After that, every device in your circle recognizes the others.
 - **Shared clipboard**, off by default: copy text or a picture on one device and paste it on another.
 - **Works in the background** while the clipboard is on, including after a restart.
 - **You decide what arrives**, per device: always ask, accept automatically, accept automatically except programs, or refuse.

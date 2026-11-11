@@ -1,3 +1,4 @@
+import AVFoundation
 import Flutter
 import PhotosUI
 import UIKit
@@ -46,6 +47,8 @@ enum PlatformChannel {
       result(nil)
     case "pickPhotos":
       PhotoPicker.shared.pick(result)
+    case "scanQr":
+      QrScanner.scan(words: args ?? [:], result: result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -237,12 +240,197 @@ final class PhotoPicker: NSObject, PHPickerViewControllerDelegate,
     }
   }
 
-  private static func topController() -> UIViewController? {
+  static func topController() -> UIViewController? {
     let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
     let windows = scenes.flatMap(\.windows)
     var top = (windows.first { $0.isKeyWindow } ?? windows.first)?.rootViewController
     while let presented = top?.presentedViewController { top = presented }
     return top
+  }
+}
+
+/// Reads the pairing QR code shown by another device, with the system's own
+/// camera and code reader. Only a Zerohop pairing code is handed back; any
+/// other code is ignored, with a short note, and the camera keeps looking.
+final class QrScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+  private static let prefix = "zerohop://pair/"
+
+  private let session = AVCaptureSession()
+  private let queue = DispatchQueue(label: "dev.zerohop.camera")
+  private let words: [String: Any]
+  private var result: FlutterResult?
+  private let preview = AVCaptureVideoPreviewLayer()
+  private let shade = CAShapeLayer()
+  private let hint = UILabel()
+  private var hintTimer: Timer?
+
+  /// The side of the square the owner aims at, as a share of the width.
+  private static let frameShare: CGFloat = 0.7
+
+  static func scan(words: [String: Any], result: @escaping FlutterResult) {
+    // No reason to ask for a camera that is not there.
+    guard AVCaptureDevice.default(for: .video) != nil else {
+      return result(FlutterError(code: "no_camera", message: nil, details: nil))
+    }
+    switch AVCaptureDevice.authorizationStatus(for: .video) {
+    case .authorized:
+      present(words: words, result: result)
+    case .notDetermined:
+      AVCaptureDevice.requestAccess(for: .video) { granted in
+        DispatchQueue.main.async {
+          if granted {
+            present(words: words, result: result)
+          } else {
+            result(FlutterError(code: "camera_denied", message: nil, details: nil))
+          }
+        }
+      }
+    default:
+      result(FlutterError(code: "camera_denied", message: nil, details: nil))
+    }
+  }
+
+  private static func present(words: [String: Any], result: @escaping FlutterResult) {
+    guard let top = PhotoPicker.topController() else {
+      return result(FlutterError(code: "unavailable", message: nil, details: nil))
+    }
+    let scanner = QrScanner(words: words, result: result)
+    scanner.modalPresentationStyle = .fullScreen
+    top.present(scanner, animated: true)
+  }
+
+  private init(words: [String: Any], result: @escaping FlutterResult) {
+    self.words = words
+    self.result = result
+    super.init(nibName: nil, bundle: nil)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    view.backgroundColor = .black
+    let camera =
+      AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+      ?? AVCaptureDevice.default(for: .video)
+    guard let camera, let input = try? AVCaptureDeviceInput(device: camera),
+      session.canAddInput(input)
+    else {
+      DispatchQueue.main.async { self.finish(FlutterError(code: "no_camera", message: nil, details: nil)) }
+      return
+    }
+    session.addInput(input)
+    let output = AVCaptureMetadataOutput()
+    if session.canAddOutput(output) {
+      session.addOutput(output)
+      output.setMetadataObjectsDelegate(self, queue: .main)
+      output.metadataObjectTypes = [.qr]
+    }
+    preview.session = session
+    preview.videoGravity = .resizeAspectFill
+    view.layer.addSublayer(preview)
+    shade.fillRule = .evenOdd
+    shade.fillColor = UIColor(white: 0, alpha: 0.55).cgColor
+    view.layer.addSublayer(shade)
+    addLabels()
+  }
+
+  private func addLabels() {
+    let title = UILabel()
+    title.text = words["title"] as? String
+    title.textColor = .white
+    title.font = .preferredFont(forTextStyle: .headline)
+    title.adjustsFontForContentSizeCategory = true
+    title.numberOfLines = 0
+    title.textAlignment = .center
+    hint.textColor = .white
+    hint.font = .preferredFont(forTextStyle: .subheadline)
+    hint.adjustsFontForContentSizeCategory = true
+    hint.textAlignment = .center
+    hint.numberOfLines = 0
+    hint.alpha = 0
+    var config = UIButton.Configuration.filled()
+    config.title = words["cancel"] as? String
+    config.baseBackgroundColor = UIColor(white: 1, alpha: 0.18)
+    config.baseForegroundColor = .white
+    config.cornerStyle = .capsule
+    config.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 28, bottom: 14, trailing: 28)
+    let cancel = UIButton(configuration: config)
+    cancel.addAction(UIAction { [weak self] _ in self?.finish(nil) }, for: .touchUpInside)
+    for item in [title, hint, cancel] as [UIView] {
+      item.translatesAutoresizingMaskIntoConstraints = false
+      view.addSubview(item)
+    }
+    let guide = view.safeAreaLayoutGuide
+    NSLayoutConstraint.activate([
+      title.topAnchor.constraint(equalTo: guide.topAnchor, constant: 32),
+      title.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
+      title.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
+      cancel.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -24),
+      cancel.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
+      hint.bottomAnchor.constraint(equalTo: cancel.topAnchor, constant: -20),
+      hint.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
+      hint.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
+    ])
+  }
+
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    preview.frame = view.bounds
+    shade.frame = view.bounds
+    let side = min(view.bounds.width, view.bounds.height) * Self.frameShare
+    let square = CGRect(
+      x: (view.bounds.width - side) / 2, y: (view.bounds.height - side) / 2,
+      width: side, height: side)
+    let path = UIBezierPath(rect: view.bounds)
+    path.append(UIBezierPath(roundedRect: square, cornerRadius: 24))
+    shade.path = path.cgPath
+  }
+
+  override func viewWillAppear(_ animated: Bool) {
+    super.viewWillAppear(animated)
+    queue.async { [session] in session.startRunning() }
+  }
+
+  override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+    queue.async { [session] in session.stopRunning() }
+  }
+
+  func metadataOutput(
+    _ output: AVCaptureMetadataOutput, didOutput objects: [AVMetadataObject],
+    from connection: AVCaptureConnection
+  ) {
+    for case let code as AVMetadataMachineReadableCodeObject in objects {
+      guard let text = code.stringValue else { continue }
+      if text.hasPrefix(Self.prefix) {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        finish(text)
+        return
+      }
+      showNotZerohop()
+    }
+  }
+
+  private func showNotZerohop() {
+    hint.text = words["notZerohop"] as? String
+    hint.alpha = 1
+    hintTimer?.invalidate()
+    hintTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { [weak self] _ in
+      UIView.animate(withDuration: 0.3) { self?.hint.alpha = 0 }
+    }
+  }
+
+  /// Hands back the code, nil for a cancel, or an error, exactly once.
+  private func finish(_ value: Any?) {
+    guard let result else { return }
+    self.result = nil
+    hintTimer?.invalidate()
+    queue.async { [session] in session.stopRunning() }
+    dismiss(animated: true) { result(value) }
   }
 }
 

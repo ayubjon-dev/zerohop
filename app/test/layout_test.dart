@@ -100,6 +100,11 @@ Map<String, dynamic> _pairing(String role, String phase) => {
   'role': role,
   'phase': phase,
   'code': '493027',
+  'code_spent': false,
+  'qr':
+      'zerohop://pair/1?k=BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ&s=BQUFBQUFBQUFBQUFBQUFBQ'
+      '&a=192.168.1.20:53321&a=10.0.0.4:53321',
+  'addresses': ['192.168.1.20:53319', '10.0.0.4:53319'],
   'room': '4F2A',
   'port': 53319,
   'comparison': '284613',
@@ -206,6 +211,19 @@ final Map<String, Setup> _scenarios = {
   'pair_show': (s, r) {
     s.screen = Screen.pairShow;
     r['pairing'] = _pairing('host', 'waiting');
+  },
+  'pair_phone': (s, r) => s.screen = Screen.pair,
+  'pair_show_spent': (s, r) {
+    s.screen = Screen.pairShow;
+    r['pairing'] = _pairing('host', 'waiting')
+      ..['code'] = null
+      ..['code_spent'] = true;
+  },
+  'pair_show_offline': (s, r) {
+    s.screen = Screen.pairShow;
+    r['pairing'] = _pairing('host', 'waiting')
+      ..['qr'] = null
+      ..['addresses'] = <String>[];
   },
   'pair_enter': (s, r) {
     s.screen = Screen.pairEnter;
@@ -360,6 +378,7 @@ Future<void> _render(
     platform: PlatformBridge(
       clipboard: _clipboardSupport[name] ?? ClipboardSupport.automatic,
       photos: _withPhotos.contains(name),
+      scanner: name == 'pair_phone',
     ),
   );
   final raw = _base(theme, language);

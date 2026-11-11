@@ -42,6 +42,7 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
     private val waiting = ArrayDeque<() -> Unit>()
     private var awake = false
     private var askedNotifications = false
+    private var scanning: MethodChannel.Result? = null
     private val wakeLock by lazy {
         getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "zerohop:transfer")
@@ -124,6 +125,7 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
                 keepAwake(call.argument<Boolean>("on") == true)
                 result.success(null)
             }
+            "scanQr" -> scan(call, result)
             "clipboardReady" -> {
                 ready = true
                 while (waiting.isNotEmpty()) waiting.removeFirst().invoke()
@@ -235,6 +237,28 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
                 getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             }
         return (shared ?: filesDir).absolutePath
+    }
+
+    private fun scan(call: MethodCall, result: MethodChannel.Result) {
+        val from = resumed
+        if (scanning != null || from == null) {
+            result.error("unavailable", null, null)
+            return
+        }
+        scanning = result
+        val words = buildMap {
+            for (key in listOf("title", "notZerohop", "cancel")) {
+                call.argument<String>(key)?.let { put(key, it) }
+            }
+        }
+        from.startActivity(ScanActivity.intent(from, words))
+    }
+
+    /** What the scanner saw: a pairing link, null for a cancel, or an error. */
+    fun scanned(code: String?, error: String?) {
+        val result = scanning ?: return
+        scanning = null
+        if (error != null) result.error(error, null, null) else result.success(code)
     }
 
     private fun deviceName(): String {

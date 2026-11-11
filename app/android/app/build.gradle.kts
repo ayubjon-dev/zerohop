@@ -47,3 +47,13 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // The pairing QR scanner: CameraX for the camera, ZXing to read the code
+    // on the phone. Both are open source and need no Google Play services.
+    implementation("androidx.activity:activity:1.10.1")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("com.google.zxing:core:3.5.3")
+}

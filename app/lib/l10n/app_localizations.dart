@@ -550,8 +550,20 @@ abstract class L10n {
   /// No description provided for @showCodeSub.
   ///
   /// In en, this message translates to:
-  /// **'Six digits to type on the other device'**
+  /// **'A QR code and six digits for the other device'**
   String get showCodeSub;
+
+  /// No description provided for @scanCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan a QR code'**
+  String get scanCode;
+
+  /// No description provided for @scanCodeSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Point the camera at the code on the other device'**
+  String get scanCodeSub;
 
   /// No description provided for @enterCode.
   ///
@@ -562,7 +574,7 @@ abstract class L10n {
   /// No description provided for @enterCodeSub.
   ///
   /// In en, this message translates to:
-  /// **'If one is already showing on the other device'**
+  /// **'Six digits from the other device'**
   String get enterCodeSub;
 
   /// No description provided for @codeTitle.
@@ -574,8 +586,56 @@ abstract class L10n {
   /// No description provided for @roomLine.
   ///
   /// In en, this message translates to:
-  /// **'Room {room}. The code works once and expires in {seconds} s.'**
+  /// **'Room {room}, {seconds} s left.'**
   String roomLine(String room, int seconds);
+
+  /// No description provided for @qrLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'QR code for linking'**
+  String get qrLabel;
+
+  /// No description provided for @qrHint.
+  ///
+  /// In en, this message translates to:
+  /// **'On your phone, open Zerohop, tap Add device, then Scan a QR code.'**
+  String get qrHint;
+
+  /// No description provided for @orTypeCode.
+  ///
+  /// In en, this message translates to:
+  /// **'No camera? Type this code on the other device. It works once.'**
+  String get orTypeCode;
+
+  /// No description provided for @codeSpent.
+  ///
+  /// In en, this message translates to:
+  /// **'Someone already tried this code, so it no longer works. The QR code still does.'**
+  String get codeSpent;
+
+  /// No description provided for @newCode.
+  ///
+  /// In en, this message translates to:
+  /// **'New code'**
+  String get newCode;
+
+  /// No description provided for @hostAddresses.
+  ///
+  /// In en, this message translates to:
+  /// **'To type the address instead: {addresses}'**
+  String hostAddresses(String addresses);
+
+  /// No description provided for @scanTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Point the camera at the QR code on the other device'**
+  String get scanTitle;
+
+  /// No description provided for @scanNotZerohop.
+  ///
+  /// In en, this message translates to:
+  /// **'This isn\'t a Zerohop code'**
+  String get scanNotZerohop;
 
   /// No description provided for @waitingForDevice.
   ///
@@ -1078,7 +1138,7 @@ abstract class L10n {
   /// No description provided for @errAlreadyLinked.
   ///
   /// In en, this message translates to:
-  /// **'This device is already linked to others. Show a code here and enter it on the new device.'**
+  /// **'This device is already linked to others. Show a code here, then scan or enter it on the new device.'**
   String get errAlreadyLinked;
 
   /// No description provided for @errBadAddress.
@@ -1086,6 +1146,30 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'That address doesn\'t look right.'**
   String get errBadAddress;
+
+  /// No description provided for @errBadLink.
+  ///
+  /// In en, this message translates to:
+  /// **'That isn\'t a Zerohop linking code.'**
+  String get errBadLink;
+
+  /// No description provided for @errOwnLink.
+  ///
+  /// In en, this message translates to:
+  /// **'That\'s this device\'s own code. Scan the one on the other device.'**
+  String get errOwnLink;
+
+  /// No description provided for @errCameraDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Zerohop can\'t use the camera. Allow it in Settings, or enter the six-digit code instead.'**
+  String get errCameraDenied;
+
+  /// No description provided for @errNoCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'This device has no camera. Enter the six-digit code instead.'**
+  String get errNoCamera;
 
   /// No description provided for @errBadName.
   ///

@@ -227,11 +227,13 @@
   "back": "Back",
   "pairIntro": "Open Zerohop on the other device. Link it once and it will see all your devices.",
   "showCode": "Show a code here",
-  "showCodeSub": "Six digits to type on the other device",
+  "showCodeSub": "A QR code and six digits for the other device",
+  "scanCode": "Scan a QR code",
+  "scanCodeSub": "Point the camera at the code on the other device",
   "enterCode": "Enter a code",
-  "enterCodeSub": "If one is already showing on the other device",
+  "enterCodeSub": "Six digits from the other device",
   "codeTitle": "Linking code",
-  "roomLine": "Room {room}. The code works once and expires in {seconds} s.",
+  "roomLine": "Room {room}, {seconds} s left.",
   "@roomLine": {
     "placeholders": {
       "room": {
@@ -242,6 +244,21 @@
       }
     }
   },
+  "qrLabel": "QR code for linking",
+  "qrHint": "On your phone, open Zerohop, tap Add device, then Scan a QR code.",
+  "orTypeCode": "No camera? Type this code on the other device. It works once.",
+  "codeSpent": "Someone already tried this code, so it no longer works. The QR code still does.",
+  "newCode": "New code",
+  "hostAddresses": "To type the address instead: {addresses}",
+  "@hostAddresses": {
+    "placeholders": {
+      "addresses": {
+        "type": "String"
+      }
+    }
+  },
+  "scanTitle": "Point the camera at the QR code on the other device",
+  "scanNotZerohop": "This isn't a Zerohop code",
   "waitingForDevice": "Waiting for the other device",
   "enterTitle": "Enter the code",
   "enterLabel": "Six digits from the other device's screen",
@@ -376,8 +393,12 @@
   "errPairDeclined": "The link was declined.",
   "errPairUnreachable": "Couldn't connect. Check that both devices are on the same network.",
   "errPairFailed": "Linking failed. Try again.",
-  "errAlreadyLinked": "This device is already linked to others. Show a code here and enter it on the new device.",
+  "errAlreadyLinked": "This device is already linked to others. Show a code here, then scan or enter it on the new device.",
   "errBadAddress": "That address doesn't look right.",
+  "errBadLink": "That isn't a Zerohop linking code.",
+  "errOwnLink": "That's this device's own code. Scan the one on the other device.",
+  "errCameraDenied": "Zerohop can't use the camera. Allow it in Settings, or enter the six-digit code instead.",
+  "errNoCamera": "This device has no camera. Enter the six-digit code instead.",
   "errBadName": "Enter a shorter name.",
   "errFolder": "That folder can't be used.",
   "errGeneric": "Something went wrong. Try again.",
