@@ -19,12 +19,16 @@ class ClipRules {
     : send = raw?['send'] as bool? ?? true,
       receive = raw?['receive'] as bool? ?? true,
       text = raw?['text'] as bool? ?? true,
-      images = raw?['images'] as bool? ?? true;
+      images = raw?['images'] as bool? ?? true,
+      files = raw?['files'] as bool? ?? true;
 
   final bool send;
   final bool receive;
   final bool text;
   final bool images;
+
+  /// Copied files, which move only when the owner pastes them.
+  final bool files;
 
   bool get bothWays => send && receive;
 }

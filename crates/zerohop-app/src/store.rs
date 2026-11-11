@@ -55,6 +55,8 @@ pub struct ClipDevice {
     pub text: bool,
     /// Pictures.
     pub images: bool,
+    /// Copied files, which move only when the owner pastes them.
+    pub files: bool,
 }
 
 impl Default for ClipDevice {
@@ -64,6 +66,7 @@ impl Default for ClipDevice {
             receive: true,
             text: true,
             images: true,
+            files: true,
         }
     }
 }

@@ -25,7 +25,7 @@ class SharedClipboard {
   void Watch(bool on);
 
   // What is on the clipboard now: a "state", and for text or a picture the
-  // "format" with its "text" or "data".
+  // "format" with its "text" or "data", for copied files their "paths".
   flutter::EncodableMap Read();
 
   // Puts what arrived on the clipboard for its lifetime.
@@ -41,6 +41,7 @@ class SharedClipboard {
   void OnChange();
   bool MarkedNotForOthers();
   flutter::EncodableMap ReadText();
+  flutter::EncodableMap ReadFiles();
   flutter::EncodableMap ReadPicture(UINT format, const char* name);
 
   HWND window_;

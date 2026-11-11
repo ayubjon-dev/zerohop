@@ -3,6 +3,7 @@
 //! A clip lives in memory only. Nothing here writes to disk or to a log, and
 //! every buffer holding clipboard contents is wiped when it is dropped.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -14,7 +15,7 @@ use zeroize::{Zeroize, Zeroizing};
 use crate::circle::random_bytes;
 use crate::ledger::DeviceId;
 use crate::session::{Session, SessionError, WRITE_TIMEOUT};
-use crate::transfer::{ReceiveConfig, TransferError};
+use crate::transfer::{Outgoing, ReceiveConfig, TransferError};
 use crate::wire::{
     ClipDataRef, ClipEnd, ClipFetch, ClipFormat, ClipItem, ClipOffer, FrameType, WireError,
     write_raw,
@@ -43,6 +44,8 @@ pub struct ClipPart {
 
 /// A clip that arrived and passed every check.
 pub struct ReceivedClip {
+    /// The clip's identifier, which a pull of its files names.
+    pub clip_id: [u8; 16],
     /// Time left before it should be gone from this device.
     pub ttl: Duration,
     /// The representations the owner's settings allow.
@@ -55,6 +58,18 @@ pub trait ClipSink: Send + Sync {
     fn accepts(&self, peer: &DeviceId, format: ClipFormat, size: u64) -> bool;
     /// Takes a clip. The sink becomes responsible for it.
     fn deliver(&self, peer: &DeviceId, clip: ReceivedClip);
+
+    /// The transfer behind a `Files` item this device offered, and where its
+    /// journal goes, for as long as the clip lives and only to a peer it was
+    /// offered to. Asked when that peer pastes.
+    fn files_for(
+        &self,
+        _peer: &DeviceId,
+        _clip_id: &[u8; 16],
+        _item: u32,
+    ) -> Option<(Outgoing, PathBuf)> {
+        None
+    }
 }
 
 /// A clip ready to be offered.
@@ -93,6 +108,12 @@ impl OutgoingClip {
             ttl_ms,
             parts,
         })
+    }
+
+    /// The clip's identifier, which a pull of its files names.
+    #[must_use]
+    pub const fn id(&self) -> [u8; 16] {
+        self.clip_id
     }
 
     const fn ttl(&self) -> Duration {
@@ -317,6 +338,7 @@ where
     sink.deliver(
         &peer,
         ReceivedClip {
+            clip_id,
             ttl: ttl.saturating_sub(started.elapsed()),
             parts,
         },

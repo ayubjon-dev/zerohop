@@ -3,17 +3,26 @@
 //! Copied content is only ever in memory. It is never written to the settings,
 //! the history, a snapshot, or a log, and this file keeps no copy of it.
 
+use std::future::Future;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use data_encoding::BASE64;
 use serde::Serialize;
 use serde_json::{Value, json};
+use zerohop_core::circle::random_bytes;
 use zerohop_core::clip::{ClipPart, ClipSink, MAX_CLIP_TTL, OutgoingClip, ReceivedClip};
 use zerohop_core::ledger::DeviceId;
 use zerohop_core::node::{Node, NodeError};
-use zerohop_core::wire::ClipFormat;
+use zerohop_core::receive::ReceiveFolder;
+use zerohop_core::transfer::{
+    self, Approver, Budgets, OfferOutcome, OfferSummary, Outgoing, ReceiveConfig, ReceiveMode,
+    ReceiveSettings, TransferError,
+};
+use zerohop_core::wire::{ClipFiles, ClipFormat, ClipPull, ItemKind};
 use zeroize::Zeroizing;
 
 use super::store::{ClipDevice, Settings};
@@ -29,12 +38,41 @@ const MAX_IMAGE: usize = 24 * 1024 * 1024;
 const SEND_LIMIT: Duration = Duration::from_secs(30);
 /// How long the caller waits to hear how it went. Sending carries on regardless.
 const REPORT_AFTER: Duration = Duration::from_secs(6);
+/// The list of copied files, a few hundred bytes a file.
+const MAX_FILE_LIST: usize = 16 * 1024 * 1024;
+/// Where pasted files wait in the device's state folder while the system's
+/// paste copies them on.
+const PASTE_DIR: &str = "paste";
+/// How long pasted files are kept for a paste that is still copying.
+const PASTE_KEEP: Duration = Duration::from_secs(60 * 60);
 
 /// What only this device remembers about the clipboard. Holds no content.
 #[derive(Default)]
 pub(super) struct ClipState {
     last_applied: Option<([u8; 32], Instant)>,
     generation: u64,
+    /// Files copied here, which the devices they were offered to may fetch
+    /// until the clip's lifetime ends.
+    offered_files: Option<OfferedFiles>,
+    /// Files copied on another device, which the owner may paste here.
+    incoming_files: Option<IncomingFiles>,
+}
+
+struct OfferedFiles {
+    clip_id: [u8; 16],
+    peers: Vec<DeviceId>,
+    outgoing: Outgoing,
+    until: Instant,
+}
+
+struct IncomingFiles {
+    clip_id: [u8; 16],
+    peer: DeviceId,
+    manifest: [u8; 32],
+    until: Instant,
+    /// What an earlier paste of the same clip left, so pasting twice
+    /// fetches once.
+    pasted: Option<Vec<String>>,
 }
 
 /// A change to one device's clipboard rules. Unset fields stay as they are.
@@ -43,12 +81,14 @@ pub(super) struct DeviceChange {
     pub receive: Option<bool>,
     pub text: Option<bool>,
     pub images: Option<bool>,
+    pub files: Option<bool>,
 }
 
 #[derive(Clone, Copy)]
 enum Kind {
     Text,
     Image,
+    Files,
 }
 
 #[derive(Clone, Copy)]
@@ -61,7 +101,8 @@ const fn kind_of(format: ClipFormat) -> Option<Kind> {
     match format {
         ClipFormat::Text => Some(Kind::Text),
         ClipFormat::Png | ClipFormat::Jpeg => Some(Kind::Image),
-        ClipFormat::Html | ClipFormat::Rtf | ClipFormat::Files => None,
+        ClipFormat::Files => Some(Kind::Files),
+        ClipFormat::Html | ClipFormat::Rtf => None,
     }
 }
 
@@ -69,6 +110,7 @@ const fn limit_of(kind: Kind) -> usize {
     match kind {
         Kind::Text => MAX_TEXT,
         Kind::Image => MAX_IMAGE,
+        Kind::Files => MAX_FILE_LIST,
     }
 }
 
@@ -88,6 +130,7 @@ fn allows(settings: &Settings, device: &str, kind: Kind, direction: Direction) -
     let content = match kind {
         Kind::Text => rules.text,
         Kind::Image => rules.images,
+        Kind::Files => rules.files,
     };
     way && content
 }
@@ -186,6 +229,7 @@ impl Shared {
             rules.receive = change.receive.unwrap_or(rules.receive);
             rules.text = change.text.unwrap_or(rules.text);
             rules.images = change.images.unwrap_or(rules.images);
+            rules.files = change.files.unwrap_or(rules.files);
         }
         self.save_settings();
         self.publish();
@@ -238,15 +282,29 @@ impl Shared {
                 .copied()
                 .collect();
             inner.clip.generation += 1;
+            // A newer copy replaces any files offered before it.
+            inner.clip.offered_files = None;
             (targets, inner.clip.generation)
         };
         if targets.is_empty() {
             return state("no_devices");
         }
+        let clip =
+            OutgoingClip::new(vec![part], LIFETIME).map_err(|_| AppError::new("bad_clip"))?;
+        self.offer_clip(&node, targets, clip, generation).await
+    }
+
+    /// Offers a clip to each target at once, and reports what happened within
+    /// a few seconds. Sending carries on after that.
+    async fn offer_clip(
+        self: &Arc<Self>,
+        node: &Node,
+        targets: Vec<DeviceId>,
+        clip: OutgoingClip,
+        generation: u64,
+    ) -> Reply {
         let total = targets.len();
-        let clip = Arc::new(
-            OutgoingClip::new(vec![part], LIFETIME).map_err(|_| AppError::new("bad_clip"))?,
-        );
+        let clip = Arc::new(clip);
         let delivered = Arc::new(AtomicUsize::new(0));
         let tasks: Vec<_> = targets
             .into_iter()
@@ -274,6 +332,189 @@ impl Shared {
             _ => "sent",
         };
         Ok(json!({ "state": name, "targets": total, "delivered": delivered }))
+    }
+
+    /// Offers files just copied here. Only their list goes now: a device
+    /// fetches the files themselves when the owner pastes them there.
+    pub(super) async fn clip_files_changed(self: &Arc<Self>, paths: Vec<String>) -> Reply {
+        if !self.state().settings.clipboard_enabled {
+            return state("off");
+        }
+        if paths.is_empty() {
+            return state("empty");
+        }
+        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        let planned = tokio::task::spawn_blocking(move || transfer::plan(&paths))
+            .await
+            .map_err(|_| AppError::new("state"))?;
+        let outgoing = match planned {
+            Ok(outgoing) => outgoing,
+            Err(TransferError::BadOffer) => return state("too_large"),
+            Err(_) => return state("empty"),
+        };
+        let list = ClipFiles {
+            items: outgoing.items.iter().map(|i| i.item.clone()).collect(),
+            total_bytes: outgoing.total_bytes,
+        };
+        let bytes = list.encode().map_err(|_| AppError::new("bad_clip"))?;
+        if bytes.len() > MAX_FILE_LIST {
+            return state("too_large");
+        }
+        let part = ClipPart {
+            format: ClipFormat::Files,
+            bytes: Zeroizing::new(bytes),
+        };
+        let Ok(node) = self.node() else {
+            return state("no_devices");
+        };
+        let nearby = self.compute_presence();
+        let members = node
+            .circle()
+            .lock()
+            .map_err(|_| AppError::new("state"))?
+            .ledger()
+            .membership()
+            .members;
+        let clip =
+            OutgoingClip::new(vec![part], LIFETIME).map_err(|_| AppError::new("bad_clip"))?;
+        // The list goes to every device allowed to have it. A device that
+        // cannot paste files leaves it behind, which costs only the list.
+        let (targets, generation) = {
+            let mut inner = self.state();
+            let targets: Vec<DeviceId> = members
+                .iter()
+                .filter(|id| nearby.contains(*id))
+                .filter(|id| allows(&inner.settings, &hex(*id), Kind::Files, Direction::Send))
+                .copied()
+                .collect();
+            if targets.is_empty() {
+                return state("no_devices");
+            }
+            inner.clip.generation += 1;
+            inner.clip.offered_files = Some(OfferedFiles {
+                clip_id: clip.id(),
+                peers: targets.clone(),
+                outgoing,
+                until: Instant::now() + LIFETIME,
+            });
+            (targets, inner.clip.generation)
+        };
+        self.offer_clip(&node, targets, clip, generation).await
+    }
+
+    /// Fetches files copied on another device into a folder of their own,
+    /// because the owner pasted them here, and returns where they are. The
+    /// system's paste copies them on from there.
+    pub(super) async fn paste_files(self: &Arc<Self>, id: &str) -> Reply {
+        let clip_id = unhex::<16>(id)?;
+        let (peer, manifest) = {
+            let inner = self.state();
+            let files = inner
+                .clip
+                .incoming_files
+                .as_ref()
+                .filter(|f| f.clip_id == clip_id && f.until > Instant::now())
+                .ok_or_else(|| AppError::new("clip_gone"))?;
+            if let Some(paths) = &files.pasted {
+                return Ok(json!({ "paths": paths }));
+            }
+            (files.peer, files.manifest)
+        };
+        let node = self.node()?;
+        let base = self.device_state_dir()?.join(PASTE_DIR);
+        sweep_pastes(&base);
+        let name = random_bytes::<8>().map_err(|_| AppError::new("state"))?;
+        let folder_path = base.join(hex(&name));
+        let folder = ReceiveFolder::open(&folder_path).map_err(|_| AppError::new("folder"))?;
+        let cfg = ReceiveConfig {
+            // The owner asked for these by pasting: nothing waits for a
+            // second answer, and every other receive rule still applies.
+            settings: ReceiveSettings::new(folder, ReceiveMode::Automatic),
+            approver: Arc::new(Pasting),
+            auto_limit: u64::MAX,
+            budgets: Arc::new(Budgets::default()),
+            clip: None,
+        };
+        let request = ClipPull { clip_id, item: 0 };
+        let lock = self.peer_lock(peer);
+        let Ok(_guard) = tokio::time::timeout(LIFETIME, lock.lock()).await else {
+            return Err(AppError::new("unreachable"));
+        };
+        for address in self.candidates(&peer) {
+            match node
+                .pull_clip(peer, address, &request, manifest, &cfg)
+                .await
+            {
+                Ok(OfferOutcome::Received(_)) => {
+                    self.remember_address(peer, address);
+                    let paths = pasted_paths(&folder_path);
+                    if let Some(files) = self
+                        .state()
+                        .clip
+                        .incoming_files
+                        .as_mut()
+                        .filter(|f| f.clip_id == clip_id)
+                    {
+                        files.pasted = Some(paths.clone());
+                    }
+                    return Ok(json!({ "paths": paths }));
+                }
+                Ok(OfferOutcome::Declined(_)) => {
+                    let _ = std::fs::remove_dir_all(&folder_path);
+                    return Err(AppError::new("clip_gone"));
+                }
+                Err(NodeError::Tls(_)) => {}
+                Err(_) => break,
+            }
+        }
+        let _ = std::fs::remove_dir_all(&folder_path);
+        Err(AppError::new("unreachable"))
+    }
+
+    /// Whether the owner can paste files here that have not arrived yet, the
+    /// paste itself fetching them. Test builds allow it everywhere.
+    fn can_paste_files_here(&self) -> bool {
+        cfg!(windows) || (cfg!(feature = "dev-loopback") && self.state().allow_loopback)
+    }
+
+    /// Takes the list of files copied on another device, and tells the
+    /// interface a paste of them is possible. Nothing of the files moves yet.
+    fn files_arrived(&self, peer: &DeviceId, clip_id: [u8; 16], part: &ClipPart, ttl: Duration) {
+        let Ok(list) = ClipFiles::decode(&part.bytes) else {
+            return;
+        };
+        let Ok(manifest) = transfer::manifest_of(&list.items) else {
+            return;
+        };
+        let Some(node) = self.node().ok() else {
+            return;
+        };
+        let files = list
+            .items
+            .iter()
+            .filter(|i| i.kind == ItemKind::File)
+            .count();
+        let folders = list
+            .items
+            .iter()
+            .filter(|i| i.kind == ItemKind::Directory && i.path.len() == 1)
+            .count();
+        self.state().clip.incoming_files = Some(IncomingFiles {
+            clip_id,
+            peer: *peer,
+            manifest,
+            until: Instant::now() + ttl,
+            pasted: None,
+        });
+        self.emit(&json!({
+            "event": "clipboard_files",
+            "id": hex(&clip_id),
+            "files": files,
+            "folders": folders,
+            "total_bytes": list.total_bytes,
+            "ttl_ms": u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX),
+            "from": self.peer_display_name(&node, peer),
+        }));
     }
 
     async fn deliver_clip(
@@ -361,17 +602,92 @@ impl ClipSink for AppClip {
         let Some(kind) = kind_of(format) else {
             return false;
         };
+        if matches!(kind, Kind::Files) && !self.0.can_paste_files_here() {
+            return false;
+        }
         let device = hex(peer);
         size <= limit_of(kind) as u64
             && allows(&self.0.state().settings, &device, kind, Direction::Receive)
     }
 
     fn deliver(&self, peer: &DeviceId, clip: ReceivedClip) {
+        if let Some(part) = clip.parts.iter().find(|p| p.format == ClipFormat::Files) {
+            self.0.files_arrived(peer, clip.clip_id, part, clip.ttl);
+            return;
+        }
         let text = clip.parts.iter().find(|p| p.format == ClipFormat::Text);
         if let Some(part) = text.or_else(|| clip.parts.first()) {
             self.0.apply_clip(peer, part, clip.ttl);
         }
     }
+
+    fn files_for(
+        &self,
+        peer: &DeviceId,
+        clip_id: &[u8; 16],
+        item: u32,
+    ) -> Option<(Outgoing, PathBuf)> {
+        if item != 0 {
+            return None;
+        }
+        let inner = self.0.state();
+        let offered = inner.clip.offered_files.as_ref()?;
+        let alive = offered.until > Instant::now();
+        if !alive || offered.clip_id != *clip_id || !offered.peers.contains(peer) {
+            return None;
+        }
+        let dir = inner.device.as_ref()?.dir.clone();
+        Some((offered.outgoing.clone(), dir))
+    }
+}
+
+/// Accepts what a paste asked for. Asked only when a peer's limits would
+/// otherwise call for the owner, who has just answered by pasting.
+struct Pasting;
+
+impl Approver for Pasting {
+    fn approve(&self, _: OfferSummary) -> Pin<Box<dyn Future<Output = bool> + Send>> {
+        Box::pin(async { true })
+    }
+}
+
+/// Removes pastes that are surely done copying. A newer one may still be
+/// in the middle of the system's copy, so it stays.
+fn sweep_pastes(base: &Path) {
+    let Ok(entries) = std::fs::read_dir(base) else {
+        return;
+    };
+    let now = SystemTime::now();
+    for entry in entries.flatten() {
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|at| now.duration_since(at).ok())
+            .is_some_and(|age| age > PASTE_KEEP);
+        if old {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+/// Removes every paste left from an earlier run.
+pub(super) fn clear_pastes(device_dir: &Path) {
+    let _ = std::fs::remove_dir_all(device_dir.join(PASTE_DIR));
+}
+
+/// The top-level files and folders a paste brought, leaving out the
+/// receive machinery's own working names.
+fn pasted_paths(folder: &Path) -> Vec<String> {
+    let mut paths: Vec<String> = std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| !e.file_name().to_string_lossy().starts_with(".zerohop"))
+        .filter_map(|e| e.path().to_str().map(str::to_string))
+        .collect();
+    paths.sort();
+    paths
 }
 
 #[cfg(test)]
@@ -430,10 +746,25 @@ mod tests {
     }
 
     #[test]
-    fn files_and_rich_text_are_not_taken() {
-        for format in [ClipFormat::Files, ClipFormat::Html, ClipFormat::Rtf] {
+    fn rich_text_is_not_taken() {
+        for format in [ClipFormat::Html, ClipFormat::Rtf] {
             assert!(kind_of(format).is_none());
         }
+    }
+
+    #[test]
+    fn files_have_a_rule_of_their_own() {
+        let mut settings = enabled();
+        assert!(allows(&settings, DEVICE, Kind::Files, Direction::Receive));
+        settings.clipboard_devices.insert(
+            DEVICE.to_string(),
+            ClipDevice {
+                files: false,
+                ..ClipDevice::default()
+            },
+        );
+        assert!(!allows(&settings, DEVICE, Kind::Files, Direction::Receive));
+        assert!(allows(&settings, DEVICE, Kind::Text, Direction::Receive));
     }
 
     #[test]

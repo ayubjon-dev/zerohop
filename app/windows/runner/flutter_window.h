@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "background_mode.h"
+#include "file_paste.h"
 #include "shared_clipboard.h"
 #include "win32_window.h"
 
@@ -71,6 +72,7 @@ class FlutterWindow : public Win32Window {
 
   std::unique_ptr<BackgroundMode> background_;
   std::unique_ptr<SharedClipboard> clipboard_;
+  std::unique_ptr<FilePaste> file_paste_;
   std::vector<std::wstring> waiting_paths_;
   // Waits for Windows Hello to answer, one check at a time.
   std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>

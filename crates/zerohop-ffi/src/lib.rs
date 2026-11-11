@@ -157,7 +157,33 @@ pub unsafe extern "C" fn zh_request(request: *const c_char) {
     }));
 }
 
-/// Frees a message delivered through the callback.
+/// Handles a request on the calling thread and returns the answer, which the
+/// caller frees with [`zh_free`]. For a caller that has to wait for the
+/// answer, such as the system asking for files the owner pasted. Null if the
+/// engine is not running or the request cannot be read.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated string. The calling thread must
+/// not be one of the engine's own.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zh_call(request: *const c_char) -> *mut c_char {
+    // SAFETY: the caller guarantees the string is valid.
+    let Some(request) = (unsafe { read_text(request) }) else {
+        return std::ptr::null_mut();
+    };
+    catch_unwind(AssertUnwindSafe(|| {
+        let answer = ENGINE.get()?.request_now(&request);
+        if answer.is_empty() {
+            return None;
+        }
+        CString::new(answer).ok().map(CString::into_raw)
+    }))
+    .ok()
+    .flatten()
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Frees a message delivered through the callback or returned by [`zh_call`].
 ///
 /// # Safety
 /// `message` must have come from the callback and not have been freed yet.

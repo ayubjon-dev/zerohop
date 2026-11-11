@@ -41,15 +41,18 @@ class PlatformBridge {
     bool? photos,
     bool? scanner,
     bool? ownerCheck,
+    bool? pastesFiles,
   }) : _clipboard = clipboard,
        _photos = photos,
        _scanner = scanner,
-       _ownerCheck = ownerCheck;
+       _ownerCheck = ownerCheck,
+       _pastesFiles = pastesFiles;
 
   final ClipboardSupport? _clipboard;
   final bool? _photos;
   final bool? _scanner;
   final bool? _ownerCheck;
+  final bool? _pastesFiles;
 
   bool get _isMac => Platform.isMacOS;
   bool get _isAndroid => Platform.isAndroid;
@@ -64,6 +67,24 @@ class PlatformBridge {
           : Platform.isIOS
           ? ClipboardSupport.tapWhileOpen
           : ClipboardSupport.none);
+
+  /// Copied files can go through the clipboard: the computers that send
+  /// each copy as it is made.
+  bool get copiesFiles => clipboard == ClipboardSupport.automatic;
+
+  /// Files copied on another device can be pasted here, the paste itself
+  /// fetching them.
+  bool get pastesFiles => _pastesFiles ?? _isWindows;
+
+  /// Offers files copied on another device for pasting here. Nothing of them
+  /// moves until the owner pastes.
+  Future<void> offerPastedFiles(Map<String, dynamic> offer) async {
+    if (!pastesFiles) return;
+    await _channel.invokeMethod<void>('clipboardFiles', {
+      'id': offer['id'],
+      'ttl_ms': offer['ttl_ms'],
+    });
+  }
 
   /// The owner sends the clipboard with a button rather than by copying.
   bool get sendsClipboardOnTap =>
@@ -204,6 +225,7 @@ class PlatformBridge {
     required void Function(String access) onAccess,
     required Future<String> Function(Map<String, dynamic> copied) onSend,
     required void Function(List<String> paths) onShared,
+    void Function()? onPasteFailed,
   }) {
     _channel.setMethodCallHandler((call) async {
       final arguments = Map<String, dynamic>.from(call.arguments as Map);
@@ -216,6 +238,8 @@ class PlatformBridge {
           return onSend(arguments);
         case 'sharedFiles':
           onShared(List<String>.from(arguments['paths'] as List));
+        case 'clipboardPasteFailed':
+          onPasteFailed?.call();
       }
       return null;
     });

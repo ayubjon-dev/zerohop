@@ -317,6 +317,8 @@ final class SharedClipboard {
   ]
   private static let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
   private static let maxImage = 24 * 1024 * 1024
+  /// Files and folders picked at once in Finder, not counting what they hold.
+  private static let maxFiles = 1000
   private static let tickSeconds = 0.5
   private static let ticksPerAccessCheck = 4
 
@@ -395,9 +397,14 @@ final class SharedClipboard {
       return ["state": "secret"]
     }
     // A copied file also offers its name as text, which is not what was meant.
+    // Only the list goes now: the files move when the owner pastes them.
     let fileOnly: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
     if types.contains(.fileURL) || board.canReadObject(forClasses: [NSURL.self], options: fileOnly) {
-      return ["state": "files"]
+      let urls = board.readObjects(forClasses: [NSURL.self], options: fileOnly) as? [URL] ?? []
+      let paths = urls.filter(\.isFileURL).map(\.path)
+      if paths.isEmpty { return ["state": "empty"] }
+      if paths.count > Self.maxFiles { return ["state": "too_large"] }
+      return ["state": "ok", "format": "files", "paths": paths]
     }
     if types.contains(.string) {
       guard let text = board.string(forType: .string) else { return ["state": "denied"] }
