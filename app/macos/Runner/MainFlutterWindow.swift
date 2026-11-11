@@ -83,6 +83,12 @@ enum PlatformChannel {
   private static let clipboard = SharedClipboard { method, arguments in
     channel?.invokeMethod(method, arguments: arguments)
   }
+  private static let pastedFiles: AnyObject? = {
+    guard #available(macOS 13.0, *) else { return nil }
+    return PastedFiles(clipboard: clipboard) { method, arguments in
+      channel?.invokeMethod(method, arguments: arguments)
+    }
+  }()
 
   static func register(with messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "dev.zerohop/platform", binaryMessenger: messenger)
@@ -128,8 +134,18 @@ enum PlatformChannel {
       BackgroundMode.shared.set(args?["on"] as? Bool ?? false)
       result(nil)
     case "clipboardWatch":
-      clipboard.watch(args?["on"] as? Bool ?? false)
+      let on = args?["on"] as? Bool ?? false
+      clipboard.watch(on)
+      if on, #available(macOS 13.0, *) { (pastedFiles as? PastedFiles)?.check() }
       result(clipboard.access)
+    case "clipboardFiles":
+      guard #available(macOS 13.0, *), let pasted = pastedFiles as? PastedFiles,
+        let id = args?["id"] as? String
+      else { return result("unavailable") }
+      pasted.offer(clip: id, ttlMs: args?["ttl_ms"] as? Int ?? 120_000) { result($0) }
+    case "fileProviderSettings":
+      if #available(macOS 13.0, *) { PastedFiles.openSettings() }
+      result(nil)
     case "clipboardRead":
       result(clipboard.read())
     case "clipboardApply":
@@ -437,24 +453,41 @@ final class SharedClipboard {
     } else {
       return
     }
-    // Clipboard managers leave it alone, and Universal Clipboard does not carry it on.
-    item.setData(Data(), forType: Self.transient)
+    write([item], ttl: Double(arguments["ttl_ms"] as? Int ?? 120_000) / 1000)
+  }
+
+  /// Puts files copied on another device on the clipboard: placeholders
+  /// whose contents come only when something reads them.
+  func applyFiles(_ urls: [URL], ttl: TimeInterval) -> Bool {
+    let items = urls.map { url -> NSPasteboardItem in
+      let item = NSPasteboardItem()
+      item.setString(url.absoluteString, forType: .fileURL)
+      return item
+    }
+    return write(items, ttl: ttl)
+  }
+
+  @discardableResult
+  private func write(_ items: [NSPasteboardItem], ttl: TimeInterval) -> Bool {
+    // Clipboard managers leave it alone, the watch here does not send it
+    // back, and Universal Clipboard does not carry it on.
+    items.first?.setData(Data(), forType: Self.transient)
     board.prepareForNewContents(with: .currentHostOnly)
-    guard board.writeObjects([item]) else { return }
+    guard board.writeObjects(items) else { return false }
     let stamp = board.changeCount
     ours = stamp
     seen = stamp
     expiry?.invalidate()
-    let ttl = Double(arguments["ttl_ms"] as? Int ?? 120_000) / 1000
     let timer = Timer(timeInterval: ttl, repeats: false) { [weak self] _ in
       self?.clearIfStillOurs()
     }
     RunLoop.main.add(timer, forMode: .common)
     expiry = timer
+    return true
   }
 
   /// Anything copied since belongs to the owner and is left alone.
-  private func clearIfStillOurs() {
+  func clearIfStillOurs() {
     guard let ours, board.changeCount == ours else { return }
     board.clearContents()
     seen = board.changeCount

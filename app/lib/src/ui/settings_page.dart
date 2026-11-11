@@ -128,6 +128,18 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                       ],
+                      if (state.filesNeedSetup) ...[
+                        const ZDivider(),
+                        _Row(
+                          title: t.clipFiles,
+                          subtitle: t.clipFilesNeedSetup,
+                          trailing: ZButton(
+                            label: t.clipFilesSetUp,
+                            height: 44,
+                            onPressed: state.platform.openFileProviderSettings,
+                          ),
+                        ),
+                      ],
                     ],
                     const ZDivider(),
                     _Row(
