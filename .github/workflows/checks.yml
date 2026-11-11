@@ -32,9 +32,6 @@ jobs:
     name: Rust on ${{ matrix.os }}
     if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
-    # Windows is still being brought up, so a failure there is reported
-    # without blocking anything until the port is finished.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -114,7 +111,6 @@ jobs:
     name: Build for ${{ matrix.name }}
     if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.name == 'Windows' }}
     strategy:
       fail-fast: false
       matrix:
