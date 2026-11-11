@@ -15,15 +15,13 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    super.applicationDidFinishLaunching(notification)
     // Started by the system at login: stay out of the way.
     let event = NSAppleEventManager.shared().currentAppleEvent
-    if event?.eventID == kAEOpenApplication,
-      event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
-    {
-      mainFlutterWindow?.orderOut(nil)
-      NSApp.setActivationPolicy(.accessory)
-    }
+    let atLogin =
+      event?.eventID == kAEOpenApplication
+      && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+    BackgroundMode.shared.start(visible: !atLogin)
+    super.applicationDidFinishLaunching(notification)
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
