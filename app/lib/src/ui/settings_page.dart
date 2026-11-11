@@ -81,7 +81,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       const ZDivider(),
                       _Row(
                         title: t.clipboard,
-                        subtitle: t.clipboardSub,
+                        subtitle:
+                            state.platform.clipboard ==
+                                ClipboardSupport.tapWhileOpen
+                            ? t.clipboardSubWhileOpen
+                            : t.clipboardSub,
                         trailing: ZSwitch(
                           value: snapshot.clipboard,
                           label: t.clipboard,

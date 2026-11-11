@@ -1135,12 +1135,14 @@ class _HomeClipboardCard extends StatelessWidget {
     final z = context.z;
     final t = L10n.of(context);
     final enabled = snapshot.clipboard;
-    final oneTap = state.platform.clipboard == ClipboardSupport.oneTap;
+    final oneTap = state.platform.sendsClipboardOnTap;
     final allowing = state.clipboardNeedsAllowing;
     final status = !enabled
         ? t.clipboardOff
         : allowing
         ? t.clipNeedsAllow
+        : state.platform.clipboard == ClipboardSupport.tapWhileOpen
+        ? t.clipboardWhileOpen
         : oneTap
         ? t.clipboardOneTap
         : t.clipboardOnDevice;

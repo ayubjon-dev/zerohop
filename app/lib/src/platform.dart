@@ -9,7 +9,19 @@ import 'windows_images.dart';
 const _channel = MethodChannel('dev.zerohop/platform');
 
 /// How this system lets copied content leave it.
-enum ClipboardSupport { none, automatic, oneTap }
+enum ClipboardSupport {
+  none,
+
+  /// Each copy is sent as soon as it is made.
+  automatic,
+
+  /// Sent when the owner taps, also from outside the app (Android).
+  oneTap,
+
+  /// Sent when the owner taps in the app, after the system asks, and
+  /// received only while the app is open (iPhone and iPad).
+  tapWhileOpen,
+}
 
 /// How the system's own check that the owner is present went.
 enum OwnerCheck {
@@ -49,7 +61,14 @@ class PlatformBridge {
           ? ClipboardSupport.automatic
           : _isAndroid
           ? ClipboardSupport.oneTap
+          : Platform.isIOS
+          ? ClipboardSupport.tapWhileOpen
           : ClipboardSupport.none);
+
+  /// The owner sends the clipboard with a button rather than by copying.
+  bool get sendsClipboardOnTap =>
+      clipboard == ClipboardSupport.oneTap ||
+      clipboard == ClipboardSupport.tapWhileOpen;
 
   /// Systems whose key store protects the device key on disk.
   bool get sealsDeviceKey =>
@@ -123,6 +142,10 @@ class PlatformBridge {
   /// The folder within the system's temporary folder that holds the copies
   /// of picked photos and videos.
   static const photosFolder = 'Photos';
+
+  /// The folder within the system's temporary folder that holds files shared
+  /// to Zerohop from other apps on iOS.
+  static const sharedFolder = 'Shared';
 
   /// Remembers access to a folder the owner picked, across restarts.
   Future<String?> bookmark(String path) async {
@@ -198,9 +221,10 @@ class PlatformBridge {
     });
   }
 
-  /// Says that requests from outside the interface can now be answered.
+  /// Says that requests from outside the interface can now be answered. On
+  /// iOS this also hands over files shared from other apps while closed.
   Future<void> clipboardReady() async {
-    if (_isAndroid || _isWindows) {
+    if (_isAndroid || _isWindows || Platform.isIOS) {
       await _channel.invokeMethod<void>('clipboardReady');
     }
   }

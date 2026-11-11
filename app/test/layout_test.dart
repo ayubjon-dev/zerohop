@@ -303,6 +303,14 @@ final Map<String, Setup> _scenarios = {
     s.screen = Screen.home;
   },
   'clip_tap_off': (s, r) => s.screen = Screen.home,
+  'clip_phone': (s, r) {
+    r['settings']['clipboard'] = true;
+    s.screen = Screen.home;
+  },
+  'clip_phone_settings': (s, r) {
+    r['settings']['clipboard'] = true;
+    s.screen = Screen.settings;
+  },
   'clip_tap_settings': (s, r) {
     r['settings']['clipboard'] = true;
     s.screen = Screen.settings;
@@ -348,6 +356,8 @@ const _clipboardSupport = {
   'clip_tap': ClipboardSupport.oneTap,
   'clip_tap_off': ClipboardSupport.oneTap,
   'clip_tap_settings': ClipboardSupport.oneTap,
+  'clip_phone': ClipboardSupport.tapWhileOpen,
+  'clip_phone_settings': ClipboardSupport.tapWhileOpen,
   'clip_unsupported': ClipboardSupport.none,
 };
 
