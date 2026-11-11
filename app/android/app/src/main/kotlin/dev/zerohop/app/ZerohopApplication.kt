@@ -42,6 +42,7 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
     private var flutter: FlutterEngine? = null
     private var channel: MethodChannel? = null
     private var resumed: Activity? = null
+    private var screens = 0
     private var ready = false
     private val waiting = ArrayDeque<() -> Unit>()
     private var awake = false
@@ -349,7 +350,23 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
         if (resumed === activity) resumed = null
     }
 
-    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+        if (activity is MainActivity) screens += 1
+    }
+
+    /**
+     * While the screen is open it passes the system's requests to free memory
+     * on to Flutter itself. With only the background service left nothing
+     * does, so the engine would keep its drawing caches and Dart its images.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        val engine = flutter ?: return
+        if (screens > 0) return
+        engine.renderer.onTrimMemory(level)
+        engine.dartExecutor.notifyLowMemoryWarning()
+        engine.systemChannel.sendMemoryPressureWarning()
+    }
 
     override fun onActivityStarted(activity: Activity) = Unit
 
@@ -357,7 +374,9 @@ class ZerohopApplication : Application(), Application.ActivityLifecycleCallbacks
 
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 
-    override fun onActivityDestroyed(activity: Activity) = Unit
+    override fun onActivityDestroyed(activity: Activity) {
+        if (activity is MainActivity) screens = maxOf(0, screens - 1)
+    }
 
     companion object {
         const val NOTIFICATIONS_REQUEST = 1

@@ -79,4 +79,16 @@ Measured on 2026-11-09 with the shared clipboard on and nothing happening:
 | Android 16 emulator, started by the service after a restart, no screen ever opened | 58 MB proportional (170 MB resident) | 0.0% |
 | Android 16 emulator, after the interface had been open | 80 MB proportional (211 MB resident) | not measured |
 
-These are from a Mac and an emulator. Battery use on a real phone has not been measured, and the memory is above the 30 MB target for an idle service, because a Flutter engine stays loaded.
+These are from a Mac and an emulator. Battery use on a real phone has not been measured.
+
+Measured again on 2026-11-11 on the same Mac, now that closing the window lets the window and the interface go while the Flutter engine, Dart and the core keep running:
+
+| Mac | Memory (footprint) | Resident | CPU |
+|---|---|---|---|
+| Window open, after the first half minute | 88 MB | 77 MB | not measured |
+| Window closed after it had been open | 62 MB | 67 MB | 0.0% |
+| Started without a window, as at login (simulated by a test build) | 36 MB | not measured | not measured |
+
+The footprint is what Activity Monitor shows as Memory. For the first half minute with the window open, drawing takes up to about 280 MB, mostly graphics memory, which the renderer gives back afterwards. After the window has been open once, the engine keeps about 15 MB of graphics memory. Windows cannot let the interface go without stopping the engine, because its Flutter embedding offers no other way, so it is unchanged. On Android the service already runs without the interface; it now passes the system's requests to free memory on to Flutter while no screen is open, which has not been measured.
+
+All of these are above the 30 MB target for an idle service, because a Flutter engine stays loaded. Reaching it needs a background mode without Flutter.

@@ -2,27 +2,78 @@ import Cocoa
 import FlutterMacOS
 import LocalAuthentication
 import ServiceManagement
+import desktop_drop
 
 class MainFlutterWindow: NSWindow {
   override func close() {
     super.close()
-    BackgroundMode.shared.windowClosed()
+    BackgroundMode.shared.windowClosed(self)
   }
 
-  override func awakeFromNib() {
-    let flutterViewController = FlutterViewController()
-    let windowFrame = self.frame
-    self.contentViewController = flutterViewController
-    self.setFrame(windowFrame, display: true)
-    self.title = "Zerohop"
-    self.minSize = NSSize(width: 380, height: 620)
-    self.setContentSize(NSSize(width: 1120, height: 760))
-    self.center()
+  /// Made in code rather than in the nib, because a window from the nib can
+  /// never be let go. A new one opens where the last one was.
+  static func make(frame: NSRect?) -> MainFlutterWindow {
+    let window = MainFlutterWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 1120, height: 760),
+      styleMask: [.titled, .closable, .miniaturizable, .resizable],
+      backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.showInterface()
+    window.setUp(frame: frame)
+    return window
+  }
 
-    RegisterGeneratedPlugins(registry: flutterViewController)
-    PlatformChannel.register(with: flutterViewController.engine.binaryMessenger)
+  private func setUp(frame: NSRect?) {
+    title = "Zerohop"
+    minSize = NSSize(width: 380, height: 620)
+    if let frame {
+      setFrame(frame, display: false)
+    } else {
+      setContentSize(NSSize(width: 1120, height: 760))
+      center()
+    }
+  }
 
-    super.awakeFromNib()
+  /// Puts the interface into the window, on the engine that kept running.
+  func showInterface() {
+    guard contentViewController == nil else { return }
+    let frame = self.frame
+    let controller = FlutterViewController(
+      engine: AppEngine.shared.engine, nibName: nil, bundle: nil)
+    contentViewController = controller
+    setFrame(frame, display: false)
+    AppEngine.shared.interfaceShown()
+  }
+
+  /// Drops the interface and what it draws with. Dart and the core keep
+  /// running on the engine, so files and the clipboard still arrive.
+  func dropInterface() {
+    contentViewController = nil
+  }
+}
+
+/// The Flutter engine outlives the window. With the window closed in
+/// background mode only the interface goes, which holds most of the memory:
+/// the surfaces it draws into and the caches behind them.
+final class AppEngine {
+  static let shared = AppEngine()
+
+  let engine = FlutterEngine(name: "zerohop", project: nil, allowHeadlessExecution: true)
+  private var running = false
+  private var dropZones = 0
+
+  /// The first time, after the view exists, so that Dart starts with one.
+  func interfaceShown() {
+    guard running else {
+      running = true
+      engine.run(withEntrypoint: nil)
+      RegisterGeneratedPlugins(registry: engine)
+      PlatformChannel.register(with: engine.binaryMessenger)
+      return
+    }
+    // The drop zone for dragged files lives in the view it was added to.
+    dropZones += 1
+    DesktopDropPlugin.register(with: engine.registrar(forPlugin: "DesktopDropPlugin\(dropZones)"))
   }
 }
 
@@ -176,13 +227,49 @@ final class BackgroundMode: NSObject {
     setStartsAtLogin(on)
   }
 
-  func windowClosed() {
-    if isOn { NSApp.setActivationPolicy(.accessory) }
+  /// Where the window was when it was let go.
+  private var lastFrame: NSRect?
+
+  /// A window made in code lives only as long as something holds it.
+  private var window: MainFlutterWindow?
+
+  /// Started by the system at login, nothing is shown: the engine starts
+  /// with a window that is let go at once, and Dart keeps running.
+  func start(visible: Bool) {
+    let window = MainFlutterWindow.make(frame: nil)
+    guard visible else {
+      NSApp.setActivationPolicy(.accessory)
+      window.dropInterface()
+      return
+    }
+    self.window = window
+    (NSApp.delegate as? FlutterAppDelegate)?.mainFlutterWindow = window
+    window.makeKeyAndOrderFront(nil)
+  }
+
+  /// A closed window keeps the last picture it showed, and the surfaces
+  /// behind it, until it draws again. So the window goes too, not only the
+  /// interface, and a new one is made when the owner opens Zerohop.
+  func windowClosed(_ window: MainFlutterWindow) {
+    guard isOn else { return }
+    NSApp.setActivationPolicy(.accessory)
+    lastFrame = window.frame
+    window.dropInterface()
+    if let delegate = NSApp.delegate as? FlutterAppDelegate, delegate.mainFlutterWindow === window {
+      delegate.mainFlutterWindow = nil
+    }
+    if self.window === window { self.window = nil }
   }
 
   @objc func showWindow() {
     NSApp.setActivationPolicy(.regular)
-    NSApp.windows.first { $0 is MainFlutterWindow }?.makeKeyAndOrderFront(nil)
+    let window =
+      NSApp.windows.first(where: { $0 is MainFlutterWindow && $0.contentViewController != nil })
+      as? MainFlutterWindow ?? MainFlutterWindow.make(frame: lastFrame)
+    window.showInterface()
+    self.window = window
+    (NSApp.delegate as? FlutterAppDelegate)?.mainFlutterWindow = window
+    window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
   }
 
