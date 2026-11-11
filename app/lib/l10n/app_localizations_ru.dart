@@ -768,6 +768,9 @@ class L10nRu extends L10n {
   String get clipImages => 'Картинки';
 
   @override
+  String get clipFiles => 'Файлы, когда вставляете';
+
+  @override
   String get clipAllow => 'Разрешить';
 
   @override
@@ -806,6 +809,15 @@ class L10nRu extends L10n {
 
   @override
   String get clipDenied => 'Система не разрешила прочитать буфер';
+
+  @override
+  String clipFilesArrived(String name) {
+    return 'Файлы скопированы на $name: вставьте их, куда нужно';
+  }
+
+  @override
+  String get clipPasteFailed =>
+      'Не удалось получить вставленные файлы. Другое устройство рядом и Zerohop на нём открыт?';
 
   @override
   String get clipDeniedAsk =>

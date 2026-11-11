@@ -65,6 +65,7 @@ pub enum FrameType {
     ClipFetch = 0x31,
     ClipData = 0x32,
     ClipEnd = 0x33,
+    ClipPull = 0x34,
     PakeA = 0x40,
     PakeB = 0x41,
     Confirm = 0x42,
@@ -107,6 +108,7 @@ impl FrameType {
             0x31 => F::ClipFetch,
             0x32 => F::ClipData,
             0x33 => F::ClipEnd,
+            0x34 => F::ClipPull,
             0x40 => F::PakeA,
             0x41 => F::PakeB,
             0x42 => F::Confirm,
@@ -520,6 +522,42 @@ pub struct ClipOffer {
 pub struct ClipFetch {
     pub clip_id: [u8; 16],
     pub item: u32,
+}
+
+/// Asks, in a session of its own, for the files a `Files` item lists. The
+/// owner has just pasted them; the answer is an ordinary transfer.
+#[allow(missing_docs)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipPull {
+    pub clip_id: [u8; 16],
+    pub item: u32,
+}
+
+/// What a `Files` item holds: the manifest of the transfer that follows a
+/// pull, and nothing of the files themselves.
+#[allow(missing_docs)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipFiles {
+    pub items: Vec<Item>,
+    pub total_bytes: u64,
+}
+
+impl ClipFiles {
+    /// The bytes a `Files` item carries.
+    ///
+    /// # Errors
+    /// Returns [`WireError::Malformed`] if the list cannot be encoded.
+    pub fn encode(&self) -> Result<Vec<u8>, WireError> {
+        postcard::to_stdvec(self).map_err(|_| WireError::Malformed)
+    }
+
+    /// Reads what a `Files` item carries.
+    ///
+    /// # Errors
+    /// Returns [`WireError::Malformed`] if the bytes are not such a list.
+    pub fn decode(bytes: &[u8]) -> Result<Self, WireError> {
+        postcard::from_bytes(bytes).map_err(|_| WireError::Malformed)
+    }
 }
 
 /// Part of a clip's contents. Never reaches a log; wiped when dropped.

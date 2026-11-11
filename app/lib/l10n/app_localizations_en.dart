@@ -758,6 +758,9 @@ class L10nEn extends L10n {
   String get clipImages => 'Pictures';
 
   @override
+  String get clipFiles => 'Files, when you paste them';
+
+  @override
   String get clipAllow => 'Allow';
 
   @override
@@ -795,6 +798,15 @@ class L10nEn extends L10n {
 
   @override
   String get clipDenied => 'The system did not allow reading the clipboard';
+
+  @override
+  String clipFilesArrived(String name) {
+    return 'Files copied on $name: paste them where you want them';
+  }
+
+  @override
+  String get clipPasteFailed =>
+      'Could not fetch the pasted files. Is the other device nearby and Zerohop open there?';
 
   @override
   String get clipDeniedAsk =>

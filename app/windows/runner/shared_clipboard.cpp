@@ -1,5 +1,7 @@
 #include "shared_clipboard.h"
 
+#include <shellapi.h>
+
 #include <algorithm>
 #include <climits>
 #include <cstdint>
@@ -8,6 +10,9 @@
 #include <utility>
 #include <vector>
 
+#include "file_paste.h"
+
+using flutter::EncodableList;
 using flutter::EncodableMap;
 using flutter::EncodableValue;
 
@@ -17,6 +22,8 @@ namespace {
 constexpr size_t kMaxPicture = 24 * 1024 * 1024;
 // Counted in UTF-16 units: far beyond anything typed or pasted by hand.
 constexpr size_t kMaxText = 8 * 1024 * 1024;
+// Files and folders picked at once in Explorer, not counting what they hold.
+constexpr UINT kMaxFiles = 1000;
 constexpr UINT_PTR kExpiryTimer = 0x5A48;
 constexpr int64_t kDefaultLifetimeMs = 120000;
 constexpr int64_t kLongestLifetimeMs = 60 * 60 * 1000;
@@ -234,12 +241,18 @@ EncodableMap SharedClipboard::Read() {
   if (::CountClipboardFormats() == 0) {
     return State("empty");
   }
+  // Files offered here from another device are not a new copy. Looked at
+  // first, because reading any of their formats would ask that offer.
+  const UINT offered = FilePaste::MarkerFormat();
+  if (offered != 0 && ::IsClipboardFormatAvailable(offered)) {
+    return State("same");
+  }
   if (MarkedNotForOthers()) {
     return State("secret");
   }
-  // Copied files are not sent through the clipboard.
+  // Only the list goes now: the files move when the owner pastes them.
   if (::IsClipboardFormatAvailable(CF_HDROP)) {
-    return State("files");
+    return ReadFiles();
   }
   if (::IsClipboardFormatAvailable(CF_UNICODETEXT)) {
     return ReadText();
@@ -302,6 +315,44 @@ EncodableMap SharedClipboard::ReadText() {
   clip[EncodableValue("format")] = EncodableValue("text");
   clip[EncodableValue("text")] = EncodableValue(utf8);
   Wipe(utf8);
+  return clip;
+}
+
+EncodableMap SharedClipboard::ReadFiles() {
+  HANDLE handle = ::GetClipboardData(CF_HDROP);
+  if (handle == nullptr) {
+    return State("denied");
+  }
+  HDROP drop = static_cast<HDROP>(handle);
+  const UINT count = ::DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+  if (count == 0) {
+    return State("empty");
+  }
+  if (count > kMaxFiles) {
+    return State("too_large");
+  }
+  EncodableList paths;
+  for (UINT index = 0; index < count; ++index) {
+    const UINT length = ::DragQueryFileW(drop, index, nullptr, 0);
+    if (length == 0) {
+      continue;
+    }
+    std::wstring path(static_cast<size_t>(length) + 1, L'\0');
+    if (::DragQueryFileW(drop, index, path.data(), length + 1) == 0) {
+      continue;
+    }
+    path.resize(length);
+    std::string utf8 = Utf8(path.c_str(), path.size());
+    if (!utf8.empty()) {
+      paths.emplace_back(std::move(utf8));
+    }
+  }
+  if (paths.empty()) {
+    return State("empty");
+  }
+  EncodableMap clip = State("ok");
+  clip[EncodableValue("format")] = EncodableValue("files");
+  clip[EncodableValue("paths")] = EncodableValue(std::move(paths));
   return clip;
 }
 

@@ -442,6 +442,7 @@
   "clipReceiveFrom": "Receive from this device",
   "clipText": "Text and links",
   "clipImages": "Pictures",
+  "clipFiles": "Files, when you paste them",
   "clipAllow": "Allow",
   "clipAllowTitle": "macOS permission",
   "clipNeedsAllow": "Let Zerohop read the clipboard: choose Allow in macOS settings",
@@ -461,6 +462,15 @@
   "clipTooLarge": "This is too large for the clipboard",
   "clipSame": "This already came from another device",
   "clipDenied": "The system did not allow reading the clipboard",
+  "clipFilesArrived": "Files copied on {name}: paste them where you want them",
+  "@clipFilesArrived": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "clipPasteFailed": "Could not fetch the pasted files. Is the other device nearby and Zerohop open there?",
   "clipDeniedAsk": "iOS did not let Zerohop read the clipboard. Allow pasting when iOS asks, or check Zerohop in the Settings app.",
   "clipTileTitle": "Button in quick settings",
   "clipTileSub": "Send what you copied from quick settings or the notification, without opening the app.",

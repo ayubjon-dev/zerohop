@@ -75,6 +75,7 @@ bool FlutterWindow::OnCreate() {
       GetHandle(), [this](const std::string& method, EncodableMap arguments) {
         Report(method, std::move(arguments));
       });
+  file_paste_ = std::make_unique<FilePaste>(GetHandle());
   waiting_paths_ = options_.paths;
   // Started by Windows at sign-in: the icon is there at once, so the app can
   // be reached even before the interface has said anything.
@@ -111,6 +112,7 @@ void FlutterWindow::OnDestroy() {
   // What arrived on the clipboard goes with the app, and so does the icon.
   // Starting at sign-in stays as the owner set it.
   clipboard_ = nullptr;
+  file_paste_ = nullptr;
   background_ = nullptr;
   owner_result_ = nullptr;
   // The channel talks through the engine, so it goes first.
@@ -146,6 +148,23 @@ void FlutterWindow::HandleCall(
   } else if (method == "clipboardApply") {
     if (arguments != nullptr) {
       clipboard_->Apply(*arguments);
+    }
+    result->Success();
+  } else if (method == "clipboardFiles") {
+    int64_t lifetime = 0;
+    if (arguments != nullptr) {
+      const auto found = arguments->find(EncodableValue("ttl_ms"));
+      if (found != arguments->end()) {
+        if (const auto* as_int32 = std::get_if<int32_t>(&found->second)) {
+          lifetime = *as_int32;
+        } else if (const auto* as_int64 =
+                       std::get_if<int64_t>(&found->second)) {
+          lifetime = *as_int64;
+        }
+      }
+    }
+    if (file_paste_) {
+      file_paste_->Offer(Text(arguments, "id"), lifetime);
     }
     result->Success();
   } else if (method == "clipboardSettings") {
@@ -243,6 +262,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     return 0;
   }
   if (clipboard_ && clipboard_->HandleMessage(message, wparam)) {
+    return 0;
+  }
+  if (message == FilePaste::kFailedMessage) {
+    Report("clipboardPasteFailed", EncodableMap());
     return 0;
   }
   if (background_) {

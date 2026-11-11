@@ -112,6 +112,7 @@ class AppState extends ChangeNotifier {
             },
             onSend: _sendFromSystem,
             onShared: receiveShared,
+            onPasteFailed: () => show((t) => t.clipPasteFailed),
           );
         }
       }
@@ -219,6 +220,8 @@ class AppState extends ChangeNotifier {
         unawaited(platform.activate());
       case 'clipboard_apply':
         unawaited(_applyClip(event));
+      case 'clipboard_files':
+        unawaited(_offerFiles(event));
     }
   }
 
@@ -376,9 +379,28 @@ class AppState extends ChangeNotifier {
     show((t) => t.clipArrived(name));
   }
 
+  /// Files copied on another device: only their list has come, and the
+  /// paste here fetches them.
+  Future<void> _offerFiles(Map<String, dynamic> event) async {
+    if (!platform.pastesFiles) return;
+    await platform.offerPastedFiles(event);
+    final name = event['from'] as String;
+    show((t) => t.clipFilesArrived(name));
+  }
+
   Future<Map<String, dynamic>?> _offerCopied(
     Map<String, dynamic> copied,
   ) async {
+    if (copied['format'] == 'files') {
+      try {
+        final reply = await core.call('clip_files', {
+          'paths': List<String>.from(copied['paths'] as List),
+        });
+        return reply as Map<String, dynamic>;
+      } on CoreError {
+        return null;
+      }
+    }
     final data = copied['data'] as Uint8List?;
     try {
       final reply = await core.call('clip_changed', {

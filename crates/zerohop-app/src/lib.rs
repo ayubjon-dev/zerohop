@@ -122,6 +122,20 @@ impl Engine {
         self.runtime
             .spawn(async move { shared.dispatch(&text).await });
     }
+
+    /// Handles a request and returns its answer, blocking the calling
+    /// thread meanwhile. For a caller that has to wait, such as the system
+    /// asking for files the owner pasted. Must not be called from inside the
+    /// engine's own threads. Empty if the request cannot be read.
+    #[must_use]
+    pub fn request_now(&self, text: &str) -> String {
+        let shared = self.shared.clone();
+        let text = Zeroizing::new(text.to_string());
+        self.runtime
+            .block_on(async move { shared.answer(&text).await })
+            .map(|answer| answer.to_string())
+            .unwrap_or_default()
+    }
 }
 
 /// A failure the interface can explain to the owner.
@@ -268,11 +282,18 @@ enum Request {
         receive: Option<bool>,
         text: Option<bool>,
         images: Option<bool>,
+        files: Option<bool>,
     },
     ClipChanged {
         format: String,
         text: Option<String>,
         data: Option<String>,
+    },
+    ClipFiles {
+        paths: Vec<String>,
+    },
+    PasteFiles {
+        id: String,
     },
 }
 
@@ -507,14 +528,17 @@ impl Shared {
     }
 
     async fn dispatch(self: &Arc<Self>, text: &str) {
-        let Ok(Envelope { id, request }) = serde_json::from_str(text) else {
-            return;
-        };
-        let message = match self.handle_request(request).await {
+        if let Some(message) = self.answer(text).await {
+            self.emit(&message);
+        }
+    }
+
+    async fn answer(self: &Arc<Self>, text: &str) -> Option<Value> {
+        let Envelope { id, request } = serde_json::from_str(text).ok()?;
+        Some(match self.handle_request(request).await {
             Ok(value) => json!({ "reply": id, "ok": value }),
             Err(e) => json!({ "reply": id, "error": { "kind": e.kind, "detail": e.detail } }),
-        };
-        self.emit(&message);
+        })
     }
 
     async fn handle_request(self: &Arc<Self>, request: Request) -> Reply {
@@ -576,6 +600,7 @@ impl Shared {
                 receive,
                 text,
                 images,
+                files,
             } => self.set_clipboard_device(
                 &device,
                 &clipboard::DeviceChange {
@@ -583,11 +608,14 @@ impl Shared {
                     receive,
                     text,
                     images,
+                    files,
                 },
             ),
             Request::ClipChanged { format, text, data } => {
                 self.clip_changed(&format, text, data).await
             }
+            Request::ClipFiles { paths } => self.clip_files_changed(paths).await,
+            Request::PasteFiles { id } => self.paste_files(&id).await,
         }
     }
 
@@ -691,6 +719,8 @@ impl Shared {
     }
 
     async fn start_device(self: &Arc<Self>, circle: Circle, dir: PathBuf) -> Result<(), AppError> {
+        // Nothing pasted in an earlier run is still being copied.
+        clipboard::clear_pastes(&dir);
         let me = circle.device_id();
         let info = LocalInfo {
             name: circle.ledger().name_of(&me).unwrap_or("device").to_string(),

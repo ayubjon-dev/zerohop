@@ -1040,6 +1040,10 @@ class _ClipboardRules extends StatelessWidget {
               row('text', t.clipText, rules.text),
               const ZDivider(),
               row('images', t.clipImages, rules.images),
+              if (state.platform.copiesFiles) ...[
+                const ZDivider(),
+                row('files', t.clipFiles, rules.files),
+              ],
             ],
           ),
         ),

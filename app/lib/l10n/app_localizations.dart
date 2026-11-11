@@ -1345,6 +1345,12 @@ abstract class L10n {
   /// **'Pictures'**
   String get clipImages;
 
+  /// No description provided for @clipFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Files, when you paste them'**
+  String get clipFiles;
+
   /// No description provided for @clipAllow.
   ///
   /// In en, this message translates to:
@@ -1416,6 +1422,18 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'The system did not allow reading the clipboard'**
   String get clipDenied;
+
+  /// No description provided for @clipFilesArrived.
+  ///
+  /// In en, this message translates to:
+  /// **'Files copied on {name}: paste them where you want them'**
+  String clipFilesArrived(String name);
+
+  /// No description provided for @clipPasteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not fetch the pasted files. Is the other device nearby and Zerohop open there?'**
+  String get clipPasteFailed;
 
   /// No description provided for @clipDeniedAsk.
   ///

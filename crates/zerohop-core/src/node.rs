@@ -17,6 +17,7 @@ use crate::tls::{self, ALPN_NORMAL, MAX_UNAUTHENTICATED, PeerRule, TlsError, pee
 use crate::transfer::{
     self, Control, OfferOutcome, Outgoing, ReceiveConfig, SendReport, TransferError,
 };
+use crate::wire::ClipPull;
 
 /// Errors from running a device.
 #[derive(Debug, thiserror::Error)]
@@ -296,6 +297,25 @@ impl Node {
         clip::offer(&mut session, outgoing).await?;
         session.goodbye().await;
         Ok(())
+    }
+
+    /// Connects to a member and fetches the files of a `Files` item it offered,
+    /// because the owner pasted them here.
+    ///
+    /// # Errors
+    /// Returns an error if the connection fails or the member breaks the protocol.
+    pub async fn pull_clip(
+        &self,
+        peer: DeviceId,
+        addr: SocketAddr,
+        request: &ClipPull,
+        manifest: [u8; 32],
+        cfg: &ReceiveConfig,
+    ) -> Result<OfferOutcome, NodeError> {
+        let mut session = self.dial(peer, addr).await?;
+        let outcome = transfer::pull(&mut session, request, manifest, cfg).await?;
+        session.goodbye().await;
+        Ok(outcome)
     }
 
     /// Connects to a member only to exchange ledger updates.

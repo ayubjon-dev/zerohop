@@ -10,7 +10,7 @@
 )]
 
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -36,8 +36,8 @@ use zerohop_core::transfer::{
     ReceiveConfig, ReceiveMode, ReceiveSettings, ReceiveStart, TransferError,
 };
 use zerohop_core::wire::{
-    self, ClipData, ClipEnd, ClipFetch, ClipFormat, ClipItem, ClipOffer, Decision, FrameType, Item,
-    ItemKind, Offer, OfferItems, PeerInfo, code, write_msg,
+    self, ClipData, ClipEnd, ClipFetch, ClipFormat, ClipItem, ClipOffer, ClipPull, Decision,
+    FrameType, Item, ItemKind, Offer, OfferItems, PeerInfo, code, write_msg,
 };
 use zeroize::Zeroizing;
 
@@ -2667,4 +2667,162 @@ async fn the_sender_refuses_to_fetch_what_was_already_inside_the_offer() {
         error,
         NodeError::Transfer(TransferError::Session(SessionError::Protocol))
     ));
+}
+
+// ---- Copied files, fetched only when pasted ----
+
+/// The device files were copied on: it hands out their transfer for one clip
+/// and one peer only.
+struct CopiedFiles {
+    clip_id: [u8; 16],
+    peer: DeviceId,
+    outgoing: transfer::Outgoing,
+    state: PathBuf,
+    pulls: AtomicUsize,
+}
+
+impl ClipSink for CopiedFiles {
+    fn accepts(&self, _: &DeviceId, _: ClipFormat, _: u64) -> bool {
+        false
+    }
+
+    fn deliver(&self, _: &DeviceId, _: ReceivedClip) {}
+
+    fn files_for(
+        &self,
+        peer: &DeviceId,
+        clip_id: &[u8; 16],
+        item: u32,
+    ) -> Option<(transfer::Outgoing, PathBuf)> {
+        self.pulls.fetch_add(1, Ordering::SeqCst);
+        (*peer == self.peer && *clip_id == self.clip_id && item == 0)
+            .then(|| (self.outgoing.clone(), self.state.clone()))
+    }
+}
+
+struct Pasted {
+    outcome: OfferOutcome,
+    folder: TempDir,
+    _source: TempDir,
+}
+
+/// The joiner copied two files; the host pastes them. `ask` is what the
+/// host names in its pull, `manifest` the hash it expects.
+async fn paste(
+    pair: &Pair,
+    ask: [u8; 16],
+    manifest: impl FnOnce(&transfer::Outgoing) -> [u8; 32],
+) -> Pasted {
+    let source = tempfile::tempdir().unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let files = vec![
+        write_file(source.path(), "notes.txt", b"copied, not sent"),
+        write_file(source.path(), "photo.jpg", &[7; 300_000]),
+    ];
+    let outgoing = transfer::plan(&files).unwrap();
+    let expected = manifest(&outgoing);
+    let copied = Arc::new(CopiedFiles {
+        clip_id: [9; 16],
+        peer: pair.host_id,
+        outgoing,
+        state: source.path().join("state"),
+        pulls: AtomicUsize::new(0),
+    });
+    let (mut serving_cfg, _) = config(source.path(), ReceiveMode::Refuse, false);
+    serving_cfg.clip = Some(copied as Arc<dyn ClipSink>);
+    let (l, addr) = listener().await;
+    let server = pair.joiner.clone();
+    let serving = tokio::spawn(async move { server.serve_one(&l, &serving_cfg).await });
+    let (cfg, _) = config(folder.path(), ReceiveMode::Automatic, false);
+    let request = ClipPull {
+        clip_id: ask,
+        item: 0,
+    };
+    let outcome = pair
+        .host
+        .pull_clip(pair.joiner_id, addr, &request, expected, &cfg)
+        .await
+        .unwrap();
+    serving.await.unwrap().unwrap();
+    Pasted {
+        outcome,
+        folder,
+        _source: source,
+    }
+}
+
+fn names_in(folder: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(folder)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| !n.starts_with(".zerohop"))
+        .collect();
+    names.sort();
+    names
+}
+
+#[tokio::test]
+async fn pasting_fetches_exactly_the_files_that_were_copied() {
+    let pair = paired().await;
+    let pasted = paste(&pair, [9; 16], |o| o.manifest).await;
+    assert!(matches!(pasted.outcome, OfferOutcome::Received(_)));
+    assert_eq!(names_in(pasted.folder.path()), ["notes.txt", "photo.jpg"]);
+    assert_eq!(
+        std::fs::read(pasted.folder.path().join("notes.txt")).unwrap(),
+        b"copied, not sent"
+    );
+}
+
+#[tokio::test]
+async fn the_manifest_a_receiver_computes_matches_the_senders() {
+    let source = tempfile::tempdir().unwrap();
+    let file = write_file(source.path(), "a.txt", b"a");
+    let outgoing = transfer::plan(&[file]).unwrap();
+    let items: Vec<Item> = outgoing.items.iter().map(|i| i.item.clone()).collect();
+    assert_eq!(transfer::manifest_of(&items).unwrap(), outgoing.manifest);
+}
+
+#[tokio::test]
+async fn a_clip_that_was_not_offered_gives_nothing() {
+    let pair = paired().await;
+    let pasted = paste(&pair, [3; 16], |o| o.manifest).await;
+    assert!(matches!(
+        pasted.outcome,
+        OfferOutcome::Declined(code::CANCELLED)
+    ));
+    assert!(names_in(pasted.folder.path()).is_empty());
+}
+
+#[tokio::test]
+async fn files_other_than_the_ones_listed_are_refused() {
+    let pair = paired().await;
+    let pasted = paste(&pair, [9; 16], |_| [0; 32]).await;
+    assert!(matches!(
+        pasted.outcome,
+        OfferOutcome::Declined(code::DECLINED)
+    ));
+    assert!(names_in(pasted.folder.path()).is_empty());
+}
+
+#[tokio::test]
+async fn a_device_never_pushes_files_for_the_clipboard_unasked() {
+    // The only way into a pull is the receiver's own request: an offer
+    // straight after connecting is an ordinary transfer under the ordinary
+    // rules, and here those refuse it.
+    let pair = paired().await;
+    let source = tempfile::tempdir().unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let file = write_file(source.path(), "pushed.txt", b"x");
+    let (cfg, _) = config(folder.path(), ReceiveMode::Refuse, false);
+    let (l, addr) = listener().await;
+    let server = pair.host.clone();
+    let serving = tokio::spawn(async move { server.serve_one(&l, &cfg).await });
+    let outgoing = transfer::plan(&[file]).unwrap();
+    let _ = pair.joiner.send(pair.host_id, addr, outgoing).await;
+    let outcomes = serving.await.unwrap().unwrap();
+    assert!(matches!(
+        outcomes.as_slice(),
+        [OfferOutcome::Declined(code::DECLINED)]
+    ));
+    assert!(names_in(folder.path()).is_empty());
 }

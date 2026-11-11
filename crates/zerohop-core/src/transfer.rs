@@ -26,10 +26,10 @@ use crate::receive::{
 };
 use crate::session::{Incoming, Session, SessionError, WRITE_TIMEOUT};
 use crate::wire::{
-    Cancel, ClipOffer, Complete, Decision, Done, FILE_DATA_HEADER, FileEnd, Frame, FrameType, Item,
-    ItemKind, MAX_CONTROL_PAYLOAD, MAX_DATA_PAYLOAD, Offer, OfferItems, Progress, ResumeRequest,
-    ResumeState, SegmentEnd, WireError, code, file_data_header, parse_file_data, write_msg,
-    write_raw,
+    Cancel, ClipOffer, ClipPull, Complete, Decision, Done, FILE_DATA_HEADER, FileEnd, Frame,
+    FrameType, Item, ItemKind, MAX_CONTROL_PAYLOAD, MAX_DATA_PAYLOAD, Offer, OfferItems, Progress,
+    ResumeRequest, ResumeState, SegmentEnd, WireError, code, file_data_header, parse_file_data,
+    write_msg, write_raw,
 };
 
 const CHUNK_SIZE: usize = 512 * 1024;
@@ -179,6 +179,10 @@ fn add_path(
     let Some(name) = source.file_name().and_then(clean_sender_name) else {
         return Ok(());
     };
+    // A selection this large cannot go anyway, so the walk stops here.
+    if out.len() > MAX_ITEMS as usize {
+        return Err(io::Error::other("too many files"));
+    }
     // Links are never sent, so a link cannot pull in files outside the selection.
     let meta = std::fs::symlink_metadata(source)?;
     let mut path = prefix.to_vec();
@@ -220,9 +224,20 @@ fn add_path(
 }
 
 fn manifest_hash(items: &[OutgoingItem]) -> Result<[u8; 32], TransferError> {
+    manifest_of(items.iter().map(|i| &i.item))
+}
+
+/// The hash a transfer of exactly these items carries, as a receiver
+/// computes it while reading the offer.
+///
+/// # Errors
+/// Returns [`TransferError::BadOffer`] if an item cannot be encoded.
+pub fn manifest_of<'a>(
+    items: impl IntoIterator<Item = &'a Item>,
+) -> Result<[u8; 32], TransferError> {
     let mut h = blake3::Hasher::new();
-    for i in items {
-        h.update(&postcard::to_stdvec(&i.item).map_err(|_| TransferError::BadOffer)?);
+    for item in items {
+        h.update(&postcard::to_stdvec(item).map_err(|_| TransferError::BadOffer)?);
     }
     Ok(*h.finalize().as_bytes())
 }
@@ -235,7 +250,13 @@ pub fn plan(paths: &[PathBuf]) -> Result<Outgoing, TransferError> {
     let mut items = Vec::new();
     let mut total_bytes = 0;
     for path in paths {
-        add_path(path, &[], &mut items, &mut total_bytes)?;
+        if let Err(e) = add_path(path, &[], &mut items, &mut total_bytes) {
+            return Err(if items.len() > MAX_ITEMS as usize {
+                TransferError::BadOffer
+            } else {
+                e.into()
+            });
+        }
     }
     if items.is_empty() || items.len() > MAX_ITEMS as usize {
         return Err(TransferError::BadOffer);
@@ -1137,7 +1158,7 @@ impl Budgets {
         true
     }
 
-    fn allow_offer(&self, peer: &DeviceId) -> bool {
+    pub(crate) fn allow_offer(&self, peer: &DeviceId) -> bool {
         let Ok(mut peers) = self.peers.lock() else {
             return false;
         };
@@ -1588,10 +1609,28 @@ async fn handle_offer<S>(
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
+    receive_offer(session, cfg, offer, None).await
+}
+
+/// Takes an offer. With `expect`, only a transfer of exactly that manifest is
+/// accepted: what a pull asked for, and nothing else in its place.
+async fn receive_offer<S>(
+    session: &mut Session<S>,
+    cfg: &ReceiveConfig,
+    offer: Offer,
+    expect: Option<[u8; 32]>,
+) -> Result<OfferOutcome, TransferError>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
     let manifest = read_manifest(session, offer.item_count).await?;
     let peer = *session.peer();
     let id = offer.transfer_id;
     let reject = |reason| OfferOutcome::Declined(reason);
+    if expect.is_some_and(|hash| hash != manifest.hash) {
+        decline(session, id, code::DECLINED).await?;
+        return Ok(reject(code::DECLINED));
+    }
     let folder = cfg.settings.folder();
     let configured = cfg.settings.mode_for(&peer);
 
@@ -1817,8 +1856,78 @@ where
                 cfg.approver.finished(session.peer(), &id, &outcome);
                 outcomes.push(outcome);
             }
+            FrameType::ClipPull => {
+                let pull: ClipPull = frame.decode()?;
+                serve_pull(session, cfg, &pull).await?;
+                return Ok(outcomes);
+            }
             _ => return session.violation().await.map_err(TransferError::from),
         }
+    }
+}
+
+/// Sends the files of a `Files` item this device offered, as an ordinary
+/// transfer in the same session. A clip that has gone, or was never offered
+/// to this peer, gets a goodbye and nothing else.
+async fn serve_pull<S>(
+    session: &mut Session<S>,
+    cfg: &ReceiveConfig,
+    pull: &ClipPull,
+) -> Result<(), TransferError>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    let peer = *session.peer();
+    let found = cfg
+        .clip
+        .as_ref()
+        .filter(|_| cfg.budgets.allow_offer(&peer))
+        .and_then(|sink| sink.files_for(&peer, &pull.clip_id, pull.item));
+    let Some((mut outgoing, state)) = found else {
+        session.goodbye().await;
+        return Ok(());
+    };
+    // Each paste is a transfer of its own, so two never share a journal.
+    outgoing.transfer_id = random_bytes().map_err(|_| TransferError::BadOffer)?;
+    match send_with(session, outgoing, &state, &Control::new()).await {
+        // The receiver turning it down is an answer, not a failure here.
+        Ok(_) | Err(TransferError::Declined(_)) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Asks a member for the files of a `Files` item it offered, and receives
+/// them under `cfg` as an ordinary transfer. Only a transfer whose manifest
+/// hashes to `manifest`, the one the clip listed, is accepted.
+///
+/// # Errors
+/// Returns an error if the session fails or the member breaks the protocol.
+pub async fn pull<S>(
+    session: &mut Session<S>,
+    request: &ClipPull,
+    manifest: [u8; 32],
+    cfg: &ReceiveConfig,
+) -> Result<OfferOutcome, TransferError>
+where
+    S: AsyncRead + AsyncWrite + Send + 'static,
+{
+    write_bounded(session, FrameType::ClipPull, request).await?;
+    session.flush().await?;
+    let frame = match session.next_frame().await {
+        Ok(frame) => frame,
+        Err(SessionError::Closed) => return Ok(OfferOutcome::Declined(code::CANCELLED)),
+        Err(e) => return Err(e.into()),
+    };
+    match frame.kind {
+        FrameType::Goodbye => Ok(OfferOutcome::Declined(code::CANCELLED)),
+        FrameType::Offer => {
+            let offer: Offer = frame.decode()?;
+            let id = offer.transfer_id;
+            let outcome = receive_offer(session, cfg, offer, Some(manifest)).await?;
+            cfg.approver.finished(session.peer(), &id, &outcome);
+            Ok(outcome)
+        }
+        _ => session.violation().await.map_err(TransferError::from),
     }
 }
 

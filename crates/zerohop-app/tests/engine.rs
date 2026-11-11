@@ -95,6 +95,17 @@ impl Side {
         reply["ok"].clone()
     }
 
+    /// Asks and waits on this thread, as the system does when the owner
+    /// pastes files.
+    fn call_now(&self, method: &str, params: Value) -> Value {
+        let id = self.next.fetch_add(1, Ordering::SeqCst);
+        let text = json!({ "id": id, "method": method, "params": params }).to_string();
+        let answer = self.engine.request_now(&text);
+        let reply: Value = serde_json::from_str(&answer).unwrap();
+        assert_eq!(reply["reply"], json!(id));
+        reply
+    }
+
     fn wait<T>(&self, what: &str, mut find: impl FnMut(&[Value]) -> Option<T>) -> T {
         let start = Instant::now();
         loop {
@@ -1084,4 +1095,116 @@ fn a_key_that_cannot_be_opened_is_reported_and_the_device_can_start_over() {
     side.ok("bootstrap", json!({ "allow_loopback": true }));
     let new = make_circle(&side);
     assert_ne!(new, old);
+}
+
+// ---- Copied files, fetched only when pasted ----
+
+fn copy_files(side: &Side, paths: &[String]) -> Value {
+    side.ok("clip_files", json!({ "paths": paths }))
+}
+
+fn files_offered(side: &Side) -> Value {
+    side.wait_event("copied files", |m| m["event"] == "clipboard_files")
+}
+
+/// Everything under `dir`, leaving out the receive machinery's own folder.
+fn received_under(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    files_under(dir, &mut found);
+    found.retain(|p| !p.components().any(|c| c.as_os_str() == ".zerohop-tmp"));
+    found
+}
+
+#[test]
+fn copied_files_move_only_when_pasted() {
+    let (a, b) = paired_sides();
+    turn_on(&a);
+    turn_on(&b);
+    let source = tempfile::tempdir().unwrap();
+    let note = write(source.path(), "note.txt", b"only when pasted");
+    let album = source.path().join("album");
+    std::fs::create_dir(&album).unwrap();
+    write(&album, "one.jpg", &[1; 200_000]);
+    let reply = copy_files(&b, &[note, album.to_string_lossy().into_owned()]);
+    assert_eq!(reply["state"], "sent");
+
+    let offer = files_offered(&a);
+    assert_eq!(offer["files"], 2);
+    assert_eq!(offer["folders"], 1);
+    assert_eq!(offer["total_bytes"], 200_016);
+    assert_eq!(offer["from"], "Phone");
+    // Only the list has come: nothing is in the receive folder.
+    assert!(received_under(&a.folder).is_empty());
+
+    let pasted = a.call_now("paste_files", json!({ "id": offer["id"] }));
+    let paths: Vec<PathBuf> = pasted["ok"]["paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| PathBuf::from(p.as_str().unwrap()))
+        .collect();
+    assert_eq!(paths.len(), 2);
+    let note = paths.iter().find(|p| p.ends_with("note.txt")).unwrap();
+    assert_eq!(std::fs::read(note).unwrap(), b"only when pasted");
+    let album = paths.iter().find(|p| p.ends_with("album")).unwrap();
+    assert_eq!(std::fs::read(album.join("one.jpg")).unwrap(), [1; 200_000]);
+    // The receive folder itself is still untouched.
+    assert!(received_under(&a.folder).is_empty());
+}
+
+#[test]
+fn pasting_twice_fetches_once() {
+    let (a, b) = paired_sides();
+    turn_on(&a);
+    turn_on(&b);
+    let source = tempfile::tempdir().unwrap();
+    let note = write(source.path(), "note.txt", b"x");
+    copy_files(&b, &[note]);
+    let offer = files_offered(&a);
+    let first = a.call_now("paste_files", json!({ "id": offer["id"] }));
+    let second = a.call_now("paste_files", json!({ "id": offer["id"] }));
+    assert_eq!(first["ok"]["paths"], second["ok"]["paths"]);
+}
+
+#[test]
+fn a_newer_copy_takes_the_files_back() {
+    let (a, b) = paired_sides();
+    turn_on(&a);
+    turn_on(&b);
+    let source = tempfile::tempdir().unwrap();
+    let note = write(source.path(), "note.txt", b"x");
+    copy_files(&b, &[note]);
+    let offer = files_offered(&a);
+    copy_text(&b, "something else");
+    applied(&a);
+    let pasted = a.call_now("paste_files", json!({ "id": offer["id"] }));
+    assert_eq!(pasted["error"]["kind"], "clip_gone");
+}
+
+#[test]
+fn files_stay_home_when_their_rule_is_off() {
+    let (a, b) = paired_sides();
+    turn_on(&a);
+    turn_on(&b);
+    set_rule(&a, "files", false);
+    let source = tempfile::tempdir().unwrap();
+    let note = write(source.path(), "note.txt", b"x");
+    copy_files(&b, &[note]);
+    copy_text(&b, "after the files");
+    applied(&a);
+    assert!(
+        !a.log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|m| m["event"] == "clipboard_files")
+    );
+}
+
+#[test]
+fn an_unknown_paste_is_refused() {
+    let (a, _b) = paired_sides();
+    turn_on(&a);
+    let pasted = a.call_now("paste_files", json!({ "id": "00".repeat(16) }));
+    assert_eq!(pasted["error"]["kind"], "clip_gone");
 }
