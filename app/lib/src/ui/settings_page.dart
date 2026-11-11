@@ -335,7 +335,10 @@ class _SettingsPageState extends State<SettingsPage> {
               kind: ZButtonKind.danger,
               onPressed: () {
                 setState(() => _confirming = false);
-                state.startOver();
+                state.startOver(
+                  title: t.ownerCheckTitle,
+                  reason: t.ownerReasonStartOver,
+                );
               },
             ),
           ],

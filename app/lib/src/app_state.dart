@@ -748,11 +748,35 @@ class AppState extends ChangeNotifier {
     await core.call('set_device_mode', {'device': device, 'mode': mode});
   });
 
-  Future<void> confirmDevice(String device, bool accept) => _run(() async {
+  /// Lets a device added elsewhere in, or turns it away. Turning it away
+  /// revokes it, so the owner confirms first.
+  Future<void> confirmDevice(
+    String device,
+    bool accept, {
+    required String title,
+    required String reason,
+  }) => _run(() async {
+    if (!accept && !await _ownerAgrees(title, reason)) return;
     await core.call('confirm_device', {'device': device, 'accept': accept});
   });
 
-  Future<void> removeDevice(String device) => _run(() async {
+  /// Removing a device signs a revocation, which must not happen just
+  /// because someone holds this device unlocked (protocol section 5.3).
+  Future<bool> _ownerAgrees(String title, String reason) async {
+    final check = await platform.confirmOwner(title: title, reason: reason);
+    if (check == OwnerCheck.refused) {
+      show((t) => t.ownerCheckRefused);
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> removeDevice(
+    String device, {
+    required String title,
+    required String reason,
+  }) => _run(() async {
+    if (!await _ownerAgrees(title, reason)) return;
     await core.call('remove_device', {'device': device});
     picked.remove(device);
     ended.remove(device);
@@ -760,13 +784,18 @@ class AppState extends ChangeNotifier {
     open(Screen.home);
   });
 
-  Future<void> startOver() => _run(() async {
-    await core.call('start_over');
-    picked.clear();
-    ended.clear();
-    selected = null;
-    open(Screen.home);
-  });
+  /// Leaves the circle. A device the others already removed has nothing
+  /// left to revoke, so only a current member asks the owner first.
+  Future<void> startOver({required String title, required String reason}) =>
+      _run(() async {
+        final member = snapshot?.me != null && snapshot?.me?.removed != true;
+        if (member && !await _ownerAgrees(title, reason)) return;
+        await core.call('start_over');
+        picked.clear();
+        ended.clear();
+        selected = null;
+        open(Screen.home);
+      });
 
   Future<void> setSetting(String key, Object? value) => _run(() async {
     await core.call('set_settings', {key: value});

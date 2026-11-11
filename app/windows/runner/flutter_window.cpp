@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "owner_check.h"
 #include "shared_paths.h"
 #include "utils.h"
 
@@ -29,6 +30,18 @@ bool Flag(const EncodableMap* arguments, const char* key) {
   }
   const bool* value = std::get_if<bool>(&found->second);
   return value != nullptr && *value;
+}
+
+std::string Text(const EncodableMap* arguments, const char* key) {
+  if (arguments == nullptr) {
+    return std::string();
+  }
+  const auto found = arguments->find(EncodableValue(key));
+  if (found == arguments->end()) {
+    return std::string();
+  }
+  const std::string* value = std::get_if<std::string>(&found->second);
+  return value == nullptr ? std::string() : *value;
 }
 
 }  // namespace
@@ -99,6 +112,7 @@ void FlutterWindow::OnDestroy() {
   // Starting at sign-in stays as the owner set it.
   clipboard_ = nullptr;
   background_ = nullptr;
+  owner_result_ = nullptr;
   // The channel talks through the engine, so it goes first.
   platform_channel_ = nullptr;
   if (flutter_controller_) {
@@ -138,6 +152,15 @@ void FlutterWindow::HandleCall(
     ::ShellExecuteW(nullptr, L"open", L"ms-settings:clipboard", nullptr,
                     nullptr, SW_SHOWNORMAL);
     result->Success();
+  } else if (method == "confirmOwner") {
+    if (owner_result_) {
+      result->Error("unavailable");
+    } else if (owner_check::Start(GetHandle(), Text(arguments, "reason"))) {
+      owner_result_ = std::move(result);
+    } else {
+      // A check that cannot even start must not let a removal through.
+      result->Success(EncodableValue("refused"));
+    }
   } else if (method == "clipboardReady") {
     interface_ready_ = true;
     DeliverPaths();
@@ -212,6 +235,13 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     }
   }
 
+  if (message == owner_check::kAnswerMessage) {
+    if (owner_result_) {
+      owner_result_->Success(EncodableValue(owner_check::AnswerName(wparam)));
+      owner_result_ = nullptr;
+    }
+    return 0;
+  }
   if (clipboard_ && clipboard_->HandleMessage(message, wparam)) {
     return 0;
   }

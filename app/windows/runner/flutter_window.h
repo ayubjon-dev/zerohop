@@ -72,6 +72,9 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<BackgroundMode> background_;
   std::unique_ptr<SharedClipboard> clipboard_;
   std::vector<std::wstring> waiting_paths_;
+  // Waits for Windows Hello to answer, one check at a time.
+  std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+      owner_result_;
   bool interface_ready_ = false;
   bool quitting_ = false;
 };

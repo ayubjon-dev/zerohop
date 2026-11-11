@@ -305,6 +305,26 @@ class L10nRu extends L10n {
   }
 
   @override
+  String get ownerCheckTitle => 'Подтвердите, что это вы';
+
+  @override
+  String ownerReasonRemove(String name) {
+    return 'отключить «$name» от ваших устройств';
+  }
+
+  @override
+  String ownerReasonDecline(String name) {
+    return 'отклонить новое устройство «$name»';
+  }
+
+  @override
+  String get ownerReasonStartOver => 'отключить это устройство от остальных';
+
+  @override
+  String get ownerCheckRefused =>
+      'Ничего не изменено: вы не подтвердили, что это вы.';
+
+  @override
   String get removeBody =>
       'Устройство больше не сможет обмениваться файлами с остальными. То, что оно уже получило, останется на нём.';
 

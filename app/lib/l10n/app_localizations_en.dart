@@ -291,6 +291,26 @@ class L10nEn extends L10n {
   }
 
   @override
+  String get ownerCheckTitle => 'Confirm it\'s you';
+
+  @override
+  String ownerReasonRemove(String name) {
+    return 'remove $name from your devices';
+  }
+
+  @override
+  String ownerReasonDecline(String name) {
+    return 'turn away the new device $name';
+  }
+
+  @override
+  String get ownerReasonStartOver => 'disconnect this device from your others';
+
+  @override
+  String get ownerCheckRefused =>
+      'Nothing changed: the check that it\'s you didn\'t go through.';
+
+  @override
   String get removeBody =>
       'It will no longer be able to exchange files with your other devices. Anything it already received stays on it.';
 

@@ -1233,7 +1233,11 @@ class RemoveDevicePage extends StatelessWidget {
                 kind: ZButtonKind.danger,
                 height: 56,
                 expand: true,
-                onPressed: () => state.removeDevice(device.id),
+                onPressed: () => state.removeDevice(
+                  device.id,
+                  title: t.ownerCheckTitle,
+                  reason: t.ownerReasonRemove(device.name),
+                ),
               ),
               const SizedBox(height: 10),
               ZButton(

@@ -40,6 +40,8 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Zerohop uses the camera only to read the QR code shown by your other device while you link it.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Zerohop asks for Face ID before it removes one of your devices.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Zerohop finds your own devices on this network and sends files directly to them.</string>
 	<key>UIApplicationSceneManifest</key>

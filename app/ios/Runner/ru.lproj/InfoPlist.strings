@@ -3,3 +3,6 @@
 
 /* Shown when iOS asks for access to the camera, used only to read a pairing QR code. */
 "NSCameraUsageDescription" = "Zerohop включает камеру, только чтобы прочитать QR-код с другого вашего устройства при привязке.";
+
+/* Shown when iOS asks for Face ID, used before a device is removed. */
+"NSFaceIDUsageDescription" = "Zerohop спрашивает Face ID, прежде чем отключить одно из ваших устройств.";
