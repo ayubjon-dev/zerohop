@@ -1,7 +1,7 @@
 ﻿; The Windows installer, built with Inno Setup 6 from the Release build:
 ;
 ;   flutter build windows --release
-;   iscc /DAppVersion=0.1.0 app\windows\installer\zerohop.iss
+;   pwsh app\windows\installer\build.ps1
 ;
 ; It installs for the current user, with no administrator rights, as
 ; messengers and most small tools do; its first window offers all users
@@ -11,6 +11,12 @@
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
+#endif
+#ifndef FullVersion
+  #define FullVersion AppVersion
+#endif
+#ifndef NumericVersion
+  #define NumericVersion AppVersion
 #endif
 #define BuildDir "..\..\build\windows\x64\runner\Release"
 
@@ -24,7 +30,14 @@ AppPublisher=Zerohop contributors
 AppPublisherURL=https://github.com/ayubjon-dev/zerohop
 AppSupportURL=https://github.com/ayubjon-dev/zerohop/issues
 AppCopyright=Copyright 2026 the Zerohop authors. Apache License 2.0.
-VersionInfoVersion={#AppVersion}
+; The same product name and version as zerohop.exe, as code signing requires.
+VersionInfoVersion={#NumericVersion}
+VersionInfoTextVersion={#FullVersion}
+VersionInfoProductName=Zerohop
+VersionInfoProductVersion={#NumericVersion}
+VersionInfoProductTextVersion={#FullVersion}
+VersionInfoCompany=Zerohop
+VersionInfoDescription=Zerohop installer
 DefaultDirName={autopf}\Zerohop
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
