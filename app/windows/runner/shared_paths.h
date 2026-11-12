@@ -33,4 +33,7 @@ void AddSendToEntry();
 // when closing its window would only hide it next to the clock.
 UINT QuitMessage();
 
+// Sent by a second launch to make the running copy open its window.
+UINT OpenMessage();
+
 #endif  // RUNNER_SHARED_PATHS_H_

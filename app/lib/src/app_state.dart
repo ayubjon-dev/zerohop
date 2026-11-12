@@ -145,7 +145,7 @@ class AppState extends ChangeNotifier {
         ? support
         : '$support${Platform.pathSeparator}profile-$profile';
     final folder = await _defaultFolder(profile);
-    final secret = await _deviceSecret(stateDir);
+    final secret = await _deviceSecret();
     if (platform.sealsDeviceKey && secret == null) return false;
     core.start(stateDir: stateDir, defaultFolder: folder, keySecret: secret);
     return true;
@@ -164,24 +164,16 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  /// Where this device keeps its key and settings. On Windows the roaming
-  /// profile can be copied to other computers, so they stay in the local one.
-  Future<String> _stateBase() async {
-    final local = Platform.environment['LOCALAPPDATA'];
-    if (Platform.isWindows && local != null && local.isNotEmpty) {
-      return '$local\\Zerohop';
-    }
-    return (await getApplicationSupportDirectory()).path;
-  }
+  /// Where this device keeps its key and settings.
+  Future<String> _stateBase() async =>
+      (await getApplicationSupportDirectory()).path;
 
   /// The key store can be briefly unavailable while the system is starting.
-  Future<Uint8List?> _deviceSecret(String stateDir) async {
+  Future<Uint8List?> _deviceSecret() async {
     if (!platform.sealsDeviceKey) return null;
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        final secret = Platform.isWindows
-            ? core.systemSecret(stateDir)
-            : await platform.deviceSecret();
+        final secret = await platform.deviceSecret();
         if (secret != null) return secret;
       } on PlatformException {
         // Treated like no answer: the caller reports it.
@@ -303,9 +295,8 @@ class AppState extends ChangeNotifier {
     if (platform.clipboard == ClipboardSupport.none || platform.ownsCore) {
       return;
     }
-    // Windows may have been started out of sight at sign-in, so it hears the
-    // first answer even when it is off. Elsewhere everything starts off.
-    final known = _clipboardOn ?? (Platform.isWindows ? null : false);
+    // Everything starts off.
+    final known = _clipboardOn ?? false;
     if (enabled == known) return;
     _clipboardOn = enabled;
     // iOS gives the app no way to keep listening once it is out of sight.

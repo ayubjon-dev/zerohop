@@ -58,24 +58,6 @@ class Core {
     }
   }
 
-  /// The secret Windows keeps for this account to seal the device key, or
-  /// null if Windows will not hand it over.
-  Uint8List? systemSecret(String stateDir) {
-    const length = 32;
-    return using((arena) {
-      final out = arena<Uint8>(length);
-      final status = zhSystemSecret(
-        stateDir.toNativeUtf8(allocator: arena),
-        out,
-        length,
-      );
-      final view = out.asTypedList(length);
-      final secret = status == 0 ? Uint8List.fromList(view) : null;
-      view.fillRange(0, length, 0);
-      return secret;
-    });
-  }
-
   void dispose() {
     _callback?.close();
   }

@@ -164,3 +164,9 @@ UINT QuitMessage() {
       ::RegisterWindowMessageW(L"dev.zerohop.app.quit");
   return message;
 }
+
+UINT OpenMessage() {
+  static const UINT message =
+      ::RegisterWindowMessageW(L"dev.zerohop.app.open");
+  return message;
+}

@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use zerohop_app::{Config, Engine, KeySealing};
 use zeroize::Zeroizing;
 
+pub mod host;
 #[cfg(windows)]
 mod windows_secret;
 
@@ -19,7 +20,7 @@ pub type Callback = extern "C" fn(*mut c_char);
 
 const SECRET_LEN: usize = 32;
 
-static ENGINE: OnceLock<Engine> = OnceLock::new();
+pub(crate) static ENGINE: OnceLock<Engine> = OnceLock::new();
 static CALLBACK: Mutex<Option<Callback>> = Mutex::new(None);
 
 fn deliver(message: String) {
@@ -31,7 +32,7 @@ fn deliver(message: String) {
 
 /// # Safety
 /// `text` must be null or point to a valid NUL-terminated string.
-unsafe fn read_text(text: *const c_char) -> Option<Zeroizing<String>> {
+pub(crate) unsafe fn read_text(text: *const c_char) -> Option<Zeroizing<String>> {
     if text.is_null() {
         return None;
     }

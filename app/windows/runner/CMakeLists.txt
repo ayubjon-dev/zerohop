@@ -7,11 +7,15 @@ project(runner LANGUAGES CXX)
 #
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
+  "app_host.cpp"
   "background_mode.cpp"
+  "bonjour.cpp"
+  "core_host.cpp"
   "file_paste.cpp"
   "flutter_window.cpp"
   "main.cpp"
   "owner_check.cpp"
+  "pictures.cpp"
   "shared_clipboard.cpp"
   "shared_paths.cpp"
   "utils.cpp"
@@ -42,7 +46,8 @@ target_compile_options(${BINARY_NAME} PRIVATE /utf-8)
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib" "shell32.lib"
-  "ole32.lib" "advapi32.lib" "uuid.lib" "runtimeobject.lib")
+  "ole32.lib" "advapi32.lib" "uuid.lib" "runtimeobject.lib" "dnsapi.lib"
+  "windowscodecs.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

@@ -156,7 +156,7 @@ std::vector<std::wstring> PathsIn(const std::string& answer) {
 
 // Asks the core for the files, which fetches them now. Blocks until then.
 std::vector<std::wstring> Fetch(const std::string& clip_id) {
-  // The interface loaded the core long before anything can be pasted.
+  // Zerohop loaded the core long before anything can be pasted.
   HMODULE core = ::GetModuleHandleW(L"zerohop_ffi.dll");
   if (core == nullptr) {
     core = ::LoadLibraryExW(L"zerohop_ffi.dll", nullptr,

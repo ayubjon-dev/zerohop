@@ -8,30 +8,28 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 
-#include "background_mode.h"
-#include "file_paste.h"
-#include "shared_clipboard.h"
 #include "win32_window.h"
 
-// How this copy of the app was started.
-struct LaunchOptions {
-  std::wstring title;
-  // Empty for the owner's everyday copy, set for test copies side by side.
-  std::wstring profile;
-  // Started by Windows at sign-in: stay next to the clock.
-  bool background = false;
-  // Files handed over from Explorer's Send to menu.
-  std::vector<std::wstring> paths;
-};
+class AppHost;
 
-// A window that hosts the Flutter view and the parts of Windows that Flutter
-// does not reach by itself.
+// The window with the interface, and with it all of Flutter: it exists only
+// while it is open. It asks the rest of Zerohop for what Windows does, and
+// hears the core through it.
 class FlutterWindow : public Win32Window {
  public:
-  FlutterWindow(const flutter::DartProject& project, LaunchOptions options);
+  FlutterWindow(const flutter::DartProject& project, AppHost& host);
   virtual ~FlutterWindow();
+
+  // A message from the core, as the core wrote it.
+  void Deliver(const std::string& message);
+
+  // Something the rest of Zerohop reports to the interface.
+  void Tell(const std::string& method, flutter::EncodableMap arguments);
+
+  // Brings the window forward, or flashes it when Windows will not allow
+  // that. False when it could not come forward.
+  bool BringForward();
 
  protected:
   // Win32Window:
@@ -45,23 +43,10 @@ class FlutterWindow : public Win32Window {
       const flutter::MethodCall<flutter::EncodableValue>& call,
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
 
-  // Sends a call to the interface.
-  void Report(const std::string& method, flutter::EncodableMap arguments);
-
-  // Hands files from Send to over once the interface can take them.
-  void DeliverPaths();
-
-  // Brings the window forward, or flashes it when Windows will not allow that.
-  // |someone_waiting| also shows a note next to the clock in that case.
-  void BringForward(bool someone_waiting);
-
-  // Closes the window for good rather than hiding it.
-  void Quit();
-
   // The project to run.
   flutter::DartProject project_;
 
-  LaunchOptions options_;
+  AppHost& host_;
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
@@ -70,15 +55,9 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       platform_channel_;
 
-  std::unique_ptr<BackgroundMode> background_;
-  std::unique_ptr<SharedClipboard> clipboard_;
-  std::unique_ptr<FilePaste> file_paste_;
-  std::vector<std::wstring> waiting_paths_;
   // Waits for Windows Hello to answer, one check at a time.
   std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
       owner_result_;
-  bool interface_ready_ = false;
-  bool quitting_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

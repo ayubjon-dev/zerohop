@@ -1594,6 +1594,9 @@ dependencies = [
 name = "zerohop-ffi"
 version = "0.1.0"
 dependencies = [
+ "data-encoding",
+ "serde",
+ "serde_json",
  "tempfile",
  "windows-sys 0.61.2",
  "zerohop-app",
