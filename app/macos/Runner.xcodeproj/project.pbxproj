@@ -32,6 +32,8 @@
 		A1F000000000000000000008 /* FilesLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F000000000000000000005 /* FilesLink.swift */; };
 		A1F000000000000000000009 /* FilesLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F000000000000000000005 /* FilesLink.swift */; };
 		A1F00000000000000000000A /* PastedFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F000000000000000000006 /* PastedFiles.swift */; };
+		A1F00000000000000000001B /* Service.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F000000000000000000019 /* Service.swift */; };
+		A1F00000000000000000001C /* Bonjour.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F00000000000000000001A /* Bonjour.swift */; };
 		A1F00000000000000000000B /* ZerohopFiles.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1F000000000000000000001 /* ZerohopFiles.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -109,6 +111,8 @@
 		A1F000000000000000000004 /* ZerohopFiles.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ZerohopFiles.entitlements; sourceTree = "<group>"; };
 		A1F000000000000000000005 /* FilesLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesLink.swift; sourceTree = "<group>"; };
 		A1F000000000000000000006 /* PastedFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastedFiles.swift; sourceTree = "<group>"; };
+		A1F000000000000000000019 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
+		A1F00000000000000000001A /* Bonjour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bonjour.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -208,6 +212,8 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				A1F000000000000000000006 /* PastedFiles.swift */,
+				A1F000000000000000000019 /* Service.swift */,
+				A1F00000000000000000001A /* Bonjour.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -447,6 +453,8 @@
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 				A1F000000000000000000009 /* FilesLink.swift in Sources */,
 				A1F00000000000000000000A /* PastedFiles.swift in Sources */,
+				A1F00000000000000000001B /* Service.swift in Sources */,
+				A1F00000000000000000001C /* Bonjour.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

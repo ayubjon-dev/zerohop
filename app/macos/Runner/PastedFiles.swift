@@ -355,32 +355,3 @@ final class PastedFiles: NSObject, FilesSource {
     }
   }
 }
-
-/// The core, asked directly and answered on the spot, for the extension's
-/// requests that cannot wait for the interface.
-enum Core {
-  private typealias Call = @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
-  private typealias Free = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
-
-  private static let functions: (call: Call, free: Free)? = {
-    guard let frameworks = Bundle.main.privateFrameworksURL else { return nil }
-    let path = frameworks.appendingPathComponent("zerohop_ffi.framework/zerohop_ffi").path
-    guard let library = dlopen(path, RTLD_NOW),
-      let call = dlsym(library, "zh_call"), let free = dlsym(library, "zh_free")
-    else { return nil }
-    return (unsafeBitCast(call, to: Call.self), unsafeBitCast(free, to: Free.self))
-  }()
-
-  /// Waits for the answer, so never on the main thread.
-  static func call(_ method: String, _ params: [String: Any]) -> [String: Any]? {
-    dispatchPrecondition(condition: .notOnQueue(.main))
-    let request: [String: Any] = ["id": 1, "method": method, "params": params]
-    guard let functions, let body = try? JSONSerialization.data(withJSONObject: request),
-      let text = String(data: body, encoding: .utf8),
-      let answer = text.withCString({ functions.call($0) })
-    else { return nil }
-    defer { functions.free(answer) }
-    let data = Data(bytes: answer, count: strlen(answer))
-    return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-  }
-}

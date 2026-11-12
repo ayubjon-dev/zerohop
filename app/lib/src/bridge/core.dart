@@ -24,7 +24,11 @@ class Core {
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   final _waiting = <int, Completer<dynamic>>{};
   NativeCallable<MessageCallback>? _callback;
-  int _next = 1;
+
+  /// On a Mac the core outlives the interface, so an answer meant for an
+  /// interface that was closed and opened again can still arrive. Numbers
+  /// therefore never start over within one run of the app.
+  int _next = DateTime.now().microsecondsSinceEpoch;
 
   Stream<Map<String, dynamic>> get events => _events.stream;
 
@@ -79,6 +83,12 @@ class Core {
   void _onMessage(Pointer<Char> pointer) {
     final text = pointer.cast<Utf8>().toDartString();
     zhFree(pointer);
+    receive(text);
+  }
+
+  /// One message from the core. On a Mac they come through the system's own
+  /// code, which started the core (see `PlatformBridge.ownsCore`).
+  void receive(String text) {
     final message = jsonDecode(text) as Map<String, dynamic>;
     final reply = message['reply'];
     if (reply is! int) {

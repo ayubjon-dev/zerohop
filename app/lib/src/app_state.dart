@@ -94,26 +94,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> init() async {
     try {
-      final support = await _stateBase();
-      final profile = Platform.environment['ZEROHOP_PROFILE'];
-      final stateDir = profile == null
-          ? support
-          : '$support${Platform.pathSeparator}profile-$profile';
-      final folder = await _defaultFolder(profile);
       if (!_coreStarted) {
-        final secret = await _deviceSecret(stateDir);
-        if (platform.sealsDeviceKey && secret == null) {
-          fatal = 'key_unavailable';
-          notifyListeners();
-          return;
-        }
-        core.start(
-          stateDir: stateDir,
-          defaultFolder: folder,
-          keySecret: secret,
-        );
-        _coreStarted = true;
-        _subscription = core.events.listen(_onEvent);
+        _subscription ??= core.events.listen(_onEvent);
         if (platform.clipboard != ClipboardSupport.none) {
           platform.listenToClipboard(
             onCopied: (copied) => unawaited(_offerCopied(copied)),
@@ -128,16 +110,58 @@ class AppState extends ChangeNotifier {
               filesState = state;
               notifyListeners();
             },
+            onFilesOffered: filesOffered,
           );
         }
+        final started = platform.ownsCore
+            ? await _attachCore()
+            : await _startCore();
+        if (!started) {
+          fatal = 'key_unavailable';
+          notifyListeners();
+          return;
+        }
+        _coreStarted = true;
       }
-      final settings = await core.call('load_settings') as Map<String, dynamic>;
-      await _restoreFolderAccess(settings);
+      // On a Mac the system's own code has already done this.
+      if (!platform.ownsCore) {
+        final settings =
+            await core.call('load_settings') as Map<String, dynamic>;
+        await _restoreFolderAccess(settings);
+      }
       await _finishStartup();
     } on CoreError catch (error) {
       fatal = error.kind;
       notifyListeners();
     }
+  }
+
+  /// Starts the core here. False when the system will not hand over what
+  /// opens the device key.
+  Future<bool> _startCore() async {
+    final support = await _stateBase();
+    final profile = Platform.environment['ZEROHOP_PROFILE'];
+    final stateDir = profile == null
+        ? support
+        : '$support${Platform.pathSeparator}profile-$profile';
+    final folder = await _defaultFolder(profile);
+    final secret = await _deviceSecret(stateDir);
+    if (platform.sealsDeviceKey && secret == null) return false;
+    core.start(stateDir: stateDir, defaultFolder: folder, keySecret: secret);
+    return true;
+  }
+
+  /// Joins the core that the system's own code keeps running while the
+  /// window is closed. False when the keychain will not hand over what opens
+  /// the device key.
+  Future<bool> _attachCore() async {
+    final answer = await platform.attachCore(core.receive);
+    final state = answer['state'] as String?;
+    if (state == 'key_unavailable') return false;
+    if (state != 'running') throw const CoreError('start');
+    clipboardAccess = answer['access'] as String? ?? clipboardAccess;
+    filesState = answer['files'] as String? ?? filesState;
+    return true;
   }
 
   /// Where this device keeps its key and settings. On Windows the roaming
@@ -168,8 +192,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _finishStartup() async {
+    // Also brings the newest snapshot, which a Mac interface joining a core
+    // already running would otherwise not have.
     await core.call('bootstrap', {'allow_loopback': false});
-    unawaited(discovery.startBrowsing());
+    if (!platform.ownsCore) unawaited(discovery.startBrowsing());
     _startedAt = DateTime.now();
     unawaited(platform.clipboardReady());
   }
@@ -231,12 +257,14 @@ class AppState extends ChangeNotifier {
         _applyEnded(Ended(event));
       case 'pairing_ended':
         _applyPairingEnded(event);
+      // On a Mac the system's own code answers these, and the interface
+      // only hears how pasting files went.
       case 'offer_arrived':
-        unawaited(platform.activate());
+        if (!platform.ownsCore) unawaited(platform.activate());
       case 'clipboard_apply':
         unawaited(_applyClip(event));
       case 'clipboard_files':
-        unawaited(offerFiles(event));
+        if (!platform.ownsCore) unawaited(offerFiles(event));
     }
   }
 
@@ -259,7 +287,7 @@ class AppState extends ChangeNotifier {
       _keptAwake = busy;
       unawaited(platform.keepAwake(busy));
     }
-    unawaited(discovery.applyAdvert(next.advert));
+    if (!platform.ownsCore) unawaited(discovery.applyAdvert(next.advert));
     unawaited(discovery.applyRoom(next.pairing));
     if (_sharedWaiting != null) {
       final waiting = _sharedWaiting!;
@@ -272,7 +300,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _syncClipboard(bool enabled) async {
-    if (platform.clipboard == ClipboardSupport.none) return;
+    if (platform.clipboard == ClipboardSupport.none || platform.ownsCore) {
+      return;
+    }
     // Windows may have been started out of sight at sign-in, so it hears the
     // first answer even when it is off. Elsewhere everything starts off.
     final known = _clipboardOn ?? (Platform.isWindows ? null : false);
@@ -383,13 +413,15 @@ class AppState extends ChangeNotifier {
 
   Future<void> _applyClip(Map<String, dynamic> event) async {
     if (platform.clipboard == ClipboardSupport.none) return;
-    final data = event['data'] as String?;
-    await platform.applyClipboard({
-      'format': event['format'],
-      'text': event['text'],
-      'data': data == null ? null : base64Decode(data),
-      'ttl_ms': event['ttl_ms'],
-    });
+    if (!platform.ownsCore) {
+      final data = event['data'] as String?;
+      await platform.applyClipboard({
+        'format': event['format'],
+        'text': event['text'],
+        'data': data == null ? null : base64Decode(data),
+        'ttl_ms': event['ttl_ms'],
+      });
+    }
     final name = event['from'] as String;
     show((t) => t.clipArrived(name));
   }
@@ -400,7 +432,14 @@ class AppState extends ChangeNotifier {
   Future<void> offerFiles(Map<String, dynamic> event) async {
     if (!platform.pastesFiles) return;
     final placed = await platform.offerPastedFiles(event);
-    final name = event['from'] as String;
+    filesOffered(event['from'] as String, placed);
+  }
+
+  /// Says how offering files copied on device [name] went: "ready" or null
+  /// once they can be pasted, "disabled" until the owner switches on
+  /// Zerohop's file provider.
+  @visibleForTesting
+  void filesOffered(String name, String? placed) {
     switch (placed) {
       case null || 'ready':
         show((t) => t.clipFilesArrived(name));
