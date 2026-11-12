@@ -7,9 +7,13 @@
 #include <memory>
 #include <string>
 
-// The class of every Zerohop window. A second launch looks for it to bring the
-// running copy forward instead of starting another one.
+// The class of the window that is Zerohop itself, which is never shown. A
+// second launch looks for it to bring the running copy forward instead of
+// starting another one, and the installer to make it quit.
 inline constexpr wchar_t kZerohopWindowClass[] = L"ZEROHOP_WINDOW";
+
+// The class of the interface's window, which exists only while it is open.
+inline constexpr wchar_t kZerohopInterfaceClass[] = L"ZEROHOP_INTERFACE";
 
 // A class abstraction for a high DPI-aware Win32 Window. Intended to be
 // inherited from by classes that wish to specialize with custom

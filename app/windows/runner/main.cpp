@@ -1,14 +1,14 @@
 #include <flutter/dart_project.h>
-#include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "flutter_window.h"
+#include "app_host.h"
 #include "shared_paths.h"
 #include "utils.h"
+#include "win32_window.h"
 
 namespace {
 
@@ -29,7 +29,8 @@ std::wstring ProfileName() {
   return name;
 }
 
-// Shows the copy that is already running, with any files from Send to.
+// Asks the copy that is already running to open its window, with any files
+// from Send to.
 void HandOverToRunningCopy(const std::wstring& title,
                            const std::vector<std::wstring>& paths) {
   HWND running = ::FindWindowW(kZerohopWindowClass, title.c_str());
@@ -40,38 +41,9 @@ void HandOverToRunningCopy(const std::wstring& title,
   DWORD process = 0;
   ::GetWindowThreadProcessId(running, &process);
   ::AllowSetForegroundWindow(process);
-  if (!paths.empty()) {
-    SendPathsTo(running, paths);
+  if (paths.empty() || !SendPathsTo(running, paths)) {
+    ::PostMessageW(running, OpenMessage(), 0, 0);
   }
-  ::ShowWindow(running, ::IsIconic(running) ? SW_RESTORE : SW_SHOW);
-  ::SetForegroundWindow(running);
-}
-
-// Centres the window on the work area of its screen, and keeps it no larger.
-void FitToWorkArea(HWND window) {
-  RECT frame;
-  MONITORINFO monitor = {};
-  monitor.cbSize = sizeof(monitor);
-  if (!::GetWindowRect(window, &frame) ||
-      !::GetMonitorInfoW(
-          ::MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor)) {
-    return;
-  }
-  const RECT& work = monitor.rcWork;
-  const int work_width = static_cast<int>(work.right - work.left);
-  const int work_height = static_cast<int>(work.bottom - work.top);
-  int width = static_cast<int>(frame.right - frame.left);
-  int height = static_cast<int>(frame.bottom - frame.top);
-  if (width > work_width) {
-    width = work_width;
-  }
-  if (height > work_height) {
-    height = work_height;
-  }
-  ::SetWindowPos(window, nullptr,
-                 static_cast<int>(work.left) + (work_width - width) / 2,
-                 static_cast<int>(work.top) + (work_height - height) / 2,
-                 width, height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 }  // namespace
@@ -118,16 +90,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   options.profile = profile;
   options.background = launch.background;
   options.paths = std::move(launch.paths);
+  const bool started_out_of_sight = options.background;
 
-  // The same size as the Mac window.
-  FlutterWindow window(project, std::move(options));
-  Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1120, 760);
-  if (!window.Create(title, origin, size)) {
+  // Zerohop itself is a window that is never shown. The interface opens now,
+  // unless Windows started Zerohop at sign-in.
+  AppHost host(project, std::move(options));
+  if (!host.Create()) {
     return EXIT_FAILURE;
   }
-  FitToWorkArea(window.GetHandle());
-  window.SetQuitOnClose(true);
+  if (!started_out_of_sight) {
+    host.OpenInterface(false);
+  }
 
   // Test profiles are left out: Send to would start the everyday copy.
   if (profile.empty()) {
