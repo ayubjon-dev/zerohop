@@ -6,10 +6,10 @@ Every release is built by the [release workflow](../.github/workflows/release.ym
 
 ## What is signed
 
-**Windows.** `zerohop.exe` and the installer.
-- They are being set up for signing through [SignPath Foundation](https://signpath.org)'s free programme for open-source projects. Until SignPath has accepted the project they are not signed, and Windows warns before running them.
-- The libraries shipped with the program are not signed separately: the Flutter engine, the plugins and Zerohop's core library. The Microsoft C++ runtime keeps Microsoft's own signature.
-- Every signed file carries the product name Zerohop and the same product version as the rest of its release.
+**Windows.** Nothing is signed yet, so Windows warns before running the installer.
+- The plan is to publish Zerohop in the Microsoft Store as well, which signs what it distributes.
+- The release workflow also has steps that sign `zerohop.exe` and the installer through [SignPath Foundation](https://signpath.org)'s programme for open-source projects. They stay idle unless that is set up, as described at the end of this page.
+- The program and the installer already carry the product name Zerohop and the same product version, as signed files must.
 
 **Android.** The APK is signed with the project's release key, which only the release workflow uses, from the repository's secrets. The workflow fails a build signed with any other key. The key's certificate has this SHA-256 fingerprint:
 
@@ -27,12 +27,12 @@ Android installs an update only when it is signed with the same key, so a copy o
 | Reviewers | [ayubjon-dev](https://github.com/ayubjon-dev) | Review every change proposed by anyone else |
 | Approvers | [ayubjon-dev](https://github.com/ayubjon-dev) | Approve each signing request, and decide which releases are signed |
 
-Everyone in these roles uses multi-factor authentication for GitHub and SignPath.
+Everyone in these roles uses multi-factor authentication for GitHub.
 
 ## How a release is signed
 
 1. A version tag starts the release workflow. The tag has to match the version in `app/pubspec.yaml`.
-2. For Windows, the workflow builds Zerohop and sends `zerohop.exe` to SignPath. An approver checks the request and approves it by hand: nothing is signed without that. The workflow then builds the installer around the signed program and sends the installer to SignPath, and an approver approves that request too.
+2. For Windows, the workflow builds the installer. It is not signed today. With SignPath set up, it would first send `zerohop.exe` and then the installer to SignPath, each request approved by hand.
 3. For Android, the workflow signs the APK with the release key and checks that the signature is from that key.
 4. For macOS, the workflow puts the app in a disk image.
 5. The workflow drafts a GitHub release with the Windows installer, the disk image, the APK and their SHA-256 checksums. An author checks the draft and publishes it.
@@ -57,7 +57,7 @@ The maintainer does this once. The repository already holds everything else.
 
 **Android.** Store the release key in the repository's secrets: `ANDROID_KEYSTORE`, the key file in base64, and `ANDROID_KEYSTORE_PASSWORD`. The key's alias is `zerohop`, and the key and its file share one password. Keep a copy of the key and the password offline: if they are lost, installed copies can never be updated again.
 
-**Windows.**
+**Windows, through SignPath (not in use).** Should the project use SignPath Foundation after all:
 
 1. Publish a first release, unsigned: SignPath Foundation signs only projects that are already released.
 2. Apply on [SignPath's page for open-source projects](https://about.signpath.io/product/open-source), naming this repository.
