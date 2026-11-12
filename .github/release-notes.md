@@ -12,6 +12,6 @@ iPhone and iPad are not part of this release yet.
 
 ## Checking the files
 
-Their SHA-256 checksums are in `SHA256SUMS`. Releases are built only by GitHub Actions, from the tag above.
+Their SHA-256 checksums are in `SHA256SUMS`. Releases are built only by GitHub Actions, from the tag above. The Windows builds are being set up for free code signing by [SignPath Foundation](https://signpath.org).
 
 [Code signing policy](https://github.com/ayubjon-dev/zerohop/blob/main/docs/code-signing.md)
