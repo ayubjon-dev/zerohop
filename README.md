@@ -23,7 +23,7 @@ Private file transfer between your own devices, directly over your local network
 | Windows | Works, including the shared clipboard, background mode and Send to. Files copied on another computer are pasted with Ctrl+V in Explorer, which fetches them only then. The installer sets it up for you alone with no administrator rights, or for everyone if you choose; it is not signed yet, so Windows warns before running it |
 | iPhone and iPad | In progress. Sending and receiving files and the shared clipboard work in the iOS Simulator; not yet tried on a real iPhone. Files and the clipboard arrive only while the app is open, because iOS does not let it listen in the background. The clipboard goes with a tap, after iOS asks. Files shared to Zerohop from other apps wait until you open Zerohop, because iOS does not let the Share menu open it |
 
-There are no published releases yet. To try it, build it from source. Releases will be built only by CI, from a version tag; the [code signing policy](docs/code-signing.md) says how the Windows builds are to be signed.
+Download the latest version from the [releases page](https://github.com/ayubjon-dev/zerohop/releases/latest): an installer for Windows, a disk image for macOS and an APK for Android, each with installation steps. Releases are built only by CI, from a version tag. The Windows and macOS builds are not signed yet, so the system warns before running them; the [code signing policy](docs/code-signing.md) explains. You can also build Zerohop from source.
 
 ## Security in brief
 
