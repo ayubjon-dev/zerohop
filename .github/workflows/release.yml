@@ -1,0 +1,139 @@
+name: Release
+
+# A version tag builds the release and drafts it on GitHub; an author checks
+# the draft and publishes it. Only Windows is built here so far.
+#
+# The Windows program and installer are signed through SignPath once the
+# project is accepted there and the SIGNPATH_API_TOKEN secret and the
+# SIGNPATH_* variables are set (see docs/code-signing.md). Each signing
+# request waits for an approver in SignPath. Until then the release is built
+# unsigned.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Kept the same as in checks.yml.
+env:
+  RUST_VERSION: "1.99.1"
+  FLUTTER_VERSION: "3.47.9"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          rustup target add x86_64-pc-windows-msvc
+      - name: Install Flutter
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Build
+        working-directory: app
+        run: flutter build windows --release
+      - name: Add the C++ runtime
+        run: cp /c/Windows/System32/{msvcp140,vcruntime140,vcruntime140_1}.dll app/build/windows/x64/runner/Release/
+
+      - name: Keep the program for signing
+        id: program
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zerohop-windows-program-unsigned
+          path: app/build/windows/x64/runner/Release/zerohop.exe
+          retention-days: 1
+          if-no-files-found: error
+      - name: Sign the program
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: windows-program
+          github-artifact-id: ${{ steps.program.outputs.artifact-id }}
+          # The approver has an hour to approve the request.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: app/build/windows/x64/runner/Release
+
+      - name: Make the installer
+        shell: pwsh
+        run: ./app/windows/installer/build.ps1
+
+      - name: Keep the installer for signing
+        id: installer
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zerohop-windows-installer-unsigned
+          path: app/build/windows/installer/*.exe
+          retention-days: 1
+          if-no-files-found: error
+      - name: Sign the installer
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: windows-installer
+          github-artifact-id: ${{ steps.installer.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: app/build/windows/installer
+
+      - name: Keep the installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zerohop-windows
+          path: app/build/windows/installer/*.exe
+          if-no-files-found: error
+
+  draft:
+    name: Draft the release
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: zerohop-windows
+          path: dist
+      - name: Draft the release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum -- * > SHA256SUMS
+          {
+            echo "Draft made by the release workflow from \`$TAG\`. Check the files and write the notes before publishing."
+            echo
+            echo "SHA-256 checksums are in \`SHA256SUMS\`."
+            echo
+            echo "[Code signing policy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/code-signing.md)"
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "Zerohop ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md" -- *

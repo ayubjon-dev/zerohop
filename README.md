@@ -20,10 +20,10 @@ Private file transfer between your own devices, directly over your local network
 |---|---|
 | macOS | Works. Files copied in Finder can be pasted on a Windows computer, and files copied on another computer are pasted with ⌘V in Finder, which fetches them only then. That needs macOS 13 or later, and Zerohop switched on once under File Providers in System Settings |
 | Android | Works. Sending the clipboard takes one tap, because Android does not let apps read it in the background |
-| Windows | Works, including the shared clipboard, background mode and Send to. Files copied on another computer are pasted with Ctrl+V in Explorer, which fetches them only then. No installer yet |
+| Windows | Works, including the shared clipboard, background mode and Send to. Files copied on another computer are pasted with Ctrl+V in Explorer, which fetches them only then. The installer sets it up for you alone with no administrator rights, or for everyone if you choose; it is not signed yet, so Windows warns before running it |
 | iPhone and iPad | In progress. Sending and receiving files and the shared clipboard work in the iOS Simulator; not yet tried on a real iPhone. Files and the clipboard arrive only while the app is open, because iOS does not let it listen in the background. The clipboard goes with a tap, after iOS asks. Files shared to Zerohop from other apps wait until you open Zerohop, because iOS does not let the Share menu open it |
 
-There are no published releases yet. To try it, build it from source.
+There are no published releases yet. To try it, build it from source. Releases will be built only by CI, from a version tag; the [code signing policy](docs/code-signing.md) says how the Windows builds are to be signed.
 
 ## Security in brief
 
@@ -87,7 +87,11 @@ The fuzz targets are described in [fuzz/README.md](fuzz/README.md).
 | `crates/zerohop-cli` | The command-line tool |
 | `app` | The Flutter interface and the native code for each platform |
 | `fuzz` | Coverage-guided fuzz targets |
-| `docs` | [Protocol](docs/protocol.md), [threat model](docs/threat-model.md), [measurements](docs/benchmarks.md) |
+| `docs` | [Protocol](docs/protocol.md), [threat model](docs/threat-model.md), [measurements](docs/benchmarks.md), [code signing policy](docs/code-signing.md) |
+
+## Code signing policy
+
+What is signed, who approves it, and what Zerohop sends over the network: see the [code signing policy](docs/code-signing.md).
 
 ## Reporting a vulnerability
 

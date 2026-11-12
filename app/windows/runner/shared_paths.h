@@ -29,4 +29,8 @@ std::vector<std::wstring> ReadPathsMessage(const COPYDATASTRUCT* message);
 // when the app has moved.
 void AddSendToEntry();
 
+// Sent by the installer and uninstaller to make the running copy quit, even
+// when closing its window would only hide it next to the clock.
+UINT QuitMessage();
+
 #endif  // RUNNER_SHARED_PATHS_H_

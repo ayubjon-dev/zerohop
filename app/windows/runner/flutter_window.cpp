@@ -268,6 +268,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     Report("clipboardPasteFailed", EncodableMap());
     return 0;
   }
+  if (message == QuitMessage()) {
+    Quit();
+    return 0;
+  }
   if (background_) {
     if (const std::optional<BackgroundMode::Action> action =
             background_->HandleMessage(message, wparam, lparam)) {
@@ -320,6 +324,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       // Windows is shutting down and may not send anything more.
       if (wparam != FALSE && clipboard_) {
         clipboard_->ClearIfStillOurs();
+      }
+      // An installer replacing Zerohop closes it this way too, through the
+      // Restart Manager, and expects it to go.
+      if (wparam != FALSE && (lparam & ENDSESSION_CLOSEAPP) != 0) {
+        Quit();
       }
       return 0;
   }
