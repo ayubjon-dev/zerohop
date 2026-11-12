@@ -29,11 +29,26 @@ android {
         versionName = flutter.versionName
     }
 
+    // Releases are signed with the project's release key, which the release
+    // workflow takes from the repository's secrets. Without it, as in pull
+    // request checks and local builds, the debug key signs instead, and such
+    // a build cannot update a released one.
+    val releaseKeystore = System.getenv("ZEROHOP_KEYSTORE")
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("ZEROHOP_KEYSTORE_PASSWORD")
+                keyAlias = "zerohop"
+                keyPassword = System.getenv("ZEROHOP_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
         }
     }
 }

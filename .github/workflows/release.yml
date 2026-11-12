@@ -1,7 +1,12 @@
 name: Release
 
-# A version tag builds the release and drafts it on GitHub; an author checks
-# the draft and publishes it. Only Windows is built here so far.
+# A version tag builds the release for Windows, macOS and Android and drafts
+# it on GitHub; an author checks the draft and publishes it. The tag has to
+# match the version in app/pubspec.yaml.
+#
+# Android releases are signed with the project's release key, taken from the
+# ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD secrets; a build signed with
+# any other key fails. The macOS app is signed ad hoc and not notarized.
 #
 # The Windows program and installer are signed through SignPath once the
 # project is accepted there and the SIGNPATH_API_TOKEN secret and the
@@ -24,6 +29,8 @@ concurrency:
 env:
   RUST_VERSION: "1.99.1"
   FLUTTER_VERSION: "3.47.9"
+  # The certificate of the Android release key; also printed in the notes.
+  ANDROID_CERT_SHA256: dba4d0c6d955c29886908211ab5a5ead033ac97d31166f5bae78d8e5814e4efe
 
 defaults:
   run:
@@ -110,30 +117,143 @@ jobs:
           path: app/build/windows/installer/*.exe
           if-no-files-found: error
 
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Install Flutter
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Build
+        working-directory: app
+        run: flutter build macos --release
+      - name: Make the disk image
+        run: |
+          app=app/build/macos/Build/Products/Release/Zerohop.app
+          codesign --verify --deep --strict "$app"
+          full=$(sed -n 's/^version: *//p' app/pubspec.yaml)
+          stage="$RUNNER_TEMP/dmg"
+          mkdir -p "$stage" dist
+          ditto "$app" "$stage/Zerohop.app"
+          ln -s /Applications "$stage/Applications"
+          hdiutil create -volname Zerohop -srcfolder "$stage" -format UDZO -ov \
+            "dist/Zerohop-${full%%+*}-macos.dmg"
+      - name: Keep the disk image
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zerohop-macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      # A build signed with a throwaway key could never be updated.
+      - name: Check that the release key is set up
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "::error::The Android release key is missing from the repository's secrets: ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          rustup target add aarch64-linux-android armv7-linux-androideabi
+      - name: Install Flutter
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Use JDK 21
+        run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+      - name: Build
+        working-directory: app
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          keystore="$RUNNER_TEMP/release.jks"
+          printf '%s' "$ANDROID_KEYSTORE" | base64 --decode > "$keystore"
+          ZEROHOP_KEYSTORE="$keystore" ZEROHOP_KEYSTORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
+            flutter build apk --release --target-platform android-arm,android-arm64
+          rm -f "$keystore"
+      - name: Check the APK
+        run: |
+          apk=app/build/app/outputs/flutter-apk/app-release.apk
+          # Without the app's own code the APK opens to nothing.
+          contents=$(unzip -l "$apk")
+          for abi in arm64-v8a armeabi-v7a; do
+            grep -q "lib/$abi/libapp.so" <<<"$contents" || { echo "::error::No libapp.so for $abi"; exit 1; }
+          done
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          certs=$("$apksigner" verify --print-certs "$apk")
+          grep -qi "SHA-256 digest: $ANDROID_CERT_SHA256" <<<"$certs" || { echo "::error::Not signed with the release key"; exit 1; }
+          full=$(sed -n 's/^version: *//p' app/pubspec.yaml)
+          mkdir -p dist
+          cp "$apk" "dist/Zerohop-${full%%+*}-android.apk"
+      - name: Keep the APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zerohop-android
+          path: dist/*.apk
+          if-no-files-found: error
+
   draft:
     name: Draft the release
-    needs: windows
+    needs: [windows, macos, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the tag against the version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          full=$(sed -n 's/^version: *//p' app/pubspec.yaml)
+          if [ "$TAG" != "v${full%%+*}" ]; then
+            echo "::error::Tag $TAG does not match version ${full%%+*} in app/pubspec.yaml."
+            exit 1
+          fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: zerohop-windows
           path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: zerohop-macos
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: zerohop-android
+          path: dist
       - name: Draft the release
-        working-directory: dist
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          version=${TAG#v}
+          sed -e "s|{tag}|$TAG|g" -e "s|{version}|$version|g" -e "s|{android_cert}|$ANDROID_CERT_SHA256|g" \
+            .github/release-notes.md > "$RUNNER_TEMP/notes.md"
+          cd dist
           sha256sum -- * > SHA256SUMS
-          {
-            echo "Draft made by the release workflow from \`$TAG\`. Check the files and write the notes before publishing."
-            echo
-            echo "SHA-256 checksums are in \`SHA256SUMS\`."
-            echo
-            echo "[Code signing policy](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/code-signing.md)"
-          } > "$RUNNER_TEMP/notes.md"
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
-            --title "Zerohop ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md" -- *
+            --title "Zerohop $version" --notes-file "$RUNNER_TEMP/notes.md" -- *
