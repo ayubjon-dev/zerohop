@@ -2,7 +2,6 @@ import Cocoa
 import FlutterMacOS
 import LocalAuthentication
 import ServiceManagement
-import desktop_drop
 
 class MainFlutterWindow: NSWindow {
   override func close() {
@@ -34,122 +33,121 @@ class MainFlutterWindow: NSWindow {
     }
   }
 
-  /// Puts the interface into the window, on the engine that kept running.
+  /// Puts the interface into the window, on an engine of its own.
   func showInterface() {
     guard contentViewController == nil else { return }
     let frame = self.frame
-    let controller = FlutterViewController(
-      engine: AppEngine.shared.engine, nibName: nil, bundle: nil)
-    contentViewController = controller
+    let engine = Interface.shared.engine()
+    contentViewController = FlutterViewController(engine: engine, nibName: nil, bundle: nil)
     setFrame(frame, display: false)
-    AppEngine.shared.interfaceShown()
+    // After the view exists, so that Dart starts with one.
+    Interface.shared.run()
   }
 
-  /// Drops the interface and what it draws with. Dart and the core keep
-  /// running on the engine, so files and the clipboard still arrive.
+  /// Lets the interface go, with all of Flutter. The core keeps running, so
+  /// files and the clipboard still arrive.
   func dropInterface() {
     contentViewController = nil
+    // AppKit lets go of a view, and of the surfaces Flutter drew into, only
+    // once the view has left its window. A window that goes away with the
+    // view still in it can leave the view behind.
+    contentView = NSView()
+    Interface.shared.shutDown()
   }
 }
 
-/// The Flutter engine outlives the window. With the window closed in
-/// background mode only the interface goes, which holds most of the memory:
-/// the surfaces it draws into and the caches behind them.
-final class AppEngine {
-  static let shared = AppEngine()
+/// Flutter, only while the window is open. Its engine, the surfaces it
+/// draws into and Dart's memory all go when the window closes.
+final class Interface {
+  static let shared = Interface()
 
-  let engine = FlutterEngine(name: "zerohop", project: nil, allowHeadlessExecution: true)
-  private var running = false
-  private var dropZones = 0
+  private var current: FlutterEngine?
+  private var link: InterfaceLink?
 
-  /// The first time, after the view exists, so that Dart starts with one.
-  func interfaceShown() {
-    guard running else {
-      running = true
-      engine.run(withEntrypoint: nil)
-      RegisterGeneratedPlugins(registry: engine)
-      PlatformChannel.register(with: engine.binaryMessenger)
-      return
-    }
-    // The drop zone for dragged files lives in the view it was added to.
-    dropZones += 1
-    DesktopDropPlugin.register(with: engine.registrar(forPlugin: "DesktopDropPlugin\(dropZones)"))
+  /// The engine for the window being opened.
+  func engine() -> FlutterEngine {
+    if let current { return current }
+    let engine = FlutterEngine(name: "zerohop", project: nil, allowHeadlessExecution: true)
+    current = engine
+    return engine
   }
+
+  func run() {
+    guard let engine = current, link == nil else { return }
+    engine.run(withEntrypoint: nil)
+    RegisterGeneratedPlugins(registry: engine)
+    link = InterfaceLink(messenger: engine.binaryMessenger)
+  }
+
+  func shutDown() {
+    guard let engine = current else { return }
+    link?.close()
+    link = nil
+    Service.shared.detach()
+    engine.shutDownEngine()
+    current = nil
+    // What Flutter freed still counts as Zerohop's memory until it is handed
+    // back to the system, which otherwise waits for the Mac to run short.
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleSeconds) {
+      _ = malloc_zone_pressure_relief(nil, 0)
+    }
+  }
+
+  /// Flutter's own threads finish letting go shortly after it shuts down.
+  private static let settleSeconds = 3.0
 }
 
-/// The parts of macOS that Flutter does not reach by itself.
-enum PlatformChannel {
-  private static var channel: FlutterMethodChannel?
-  private static let clipboard = SharedClipboard { method, arguments in
-    channel?.invokeMethod(method, arguments: arguments)
-  }
-  private static let pastedFiles: AnyObject? = {
-    guard #available(macOS 13.0, *) else { return nil }
-    return PastedFiles(clipboard: clipboard) { method, arguments in
-      channel?.invokeMethod(method, arguments: arguments)
+/// What the interface asks of macOS, and what it hears from the core while
+/// its window is open.
+final class InterfaceLink {
+  private let platform: FlutterMethodChannel
+  private let core: FlutterBasicMessageChannel
+
+  init(messenger: FlutterBinaryMessenger) {
+    platform = FlutterMethodChannel(name: "dev.zerohop/platform", binaryMessenger: messenger)
+    core = FlutterBasicMessageChannel(
+      name: "dev.zerohop/core", binaryMessenger: messenger,
+      codec: FlutterBinaryCodec.sharedInstance())
+    platform.setMethodCallHandler { [weak self] call, result in
+      self?.handle(call, result: result)
     }
-  }()
-
-  static func register(with messenger: FlutterBinaryMessenger) {
-    let channel = FlutterMethodChannel(name: "dev.zerohop/platform", binaryMessenger: messenger)
-    channel.setMethodCallHandler(handle)
-    Self.channel = channel
   }
 
-  private static func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  func close() {
+    platform.setMethodCallHandler(nil)
+  }
+
+  /// A message from the core, as the core wrote it.
+  func deliver(_ message: Data) {
+    core.sendMessage(message)
+  }
+
+  /// Something the clipboard or pasted files report.
+  func tell(_ method: String, _ arguments: [String: Any]) {
+    platform.invokeMethod(method, arguments: arguments)
+  }
+
+  private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     let args = call.arguments as? [String: Any]
     switch call.method {
+    case "attach":
+      Service.shared.attach(self) { started in
+        var answer = Service.shared.access
+        answer["state"] = started.rawValue
+        result(answer)
+      }
     case "bookmark":
       guard let path = args?["path"] as? String else { return result(nil) }
-      let url = URL(fileURLWithPath: path, isDirectory: true)
-      let data = try? url.bookmarkData(
-        options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-      result(data?.base64EncodedString())
+      result(Bookmarks.make(path))
     case "resolve":
-      guard let text = args?["bookmark"] as? String, let data = Data(base64Encoded: text) else {
-        return result(nil)
-      }
-      var stale = false
-      guard
-        let url = try? URL(
-          resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil,
-          bookmarkDataIsStale: &stale),
-        url.startAccessingSecurityScopedResource()
-      else { return result(nil) }
-      result(url.path)
+      guard let bookmark = args?["bookmark"] as? String else { return result(nil) }
+      result(Bookmarks.resolve(bookmark))
     case "show":
       guard let path = args?["path"] as? String else { return result(nil) }
       NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
       result(nil)
-    case "activate":
-      BackgroundMode.shared.showWindow()
-      result(nil)
-    case "deviceSecret":
-      // Reading it can make macOS ask the owner, so never on the main thread.
-      DispatchQueue.global(qos: .userInitiated).async {
-        let secret = KeyVault.secret()
-        DispatchQueue.main.async { result(secret.map { FlutterStandardTypedData(bytes: $0) }) }
-      }
-    case "background":
-      BackgroundMode.shared.set(args?["on"] as? Bool ?? false)
-      result(nil)
-    case "clipboardWatch":
-      let on = args?["on"] as? Bool ?? false
-      clipboard.watch(on)
-      if on, #available(macOS 13.0, *) { (pastedFiles as? PastedFiles)?.check() }
-      result(clipboard.access)
-    case "clipboardFiles":
-      guard #available(macOS 13.0, *), let pasted = pastedFiles as? PastedFiles,
-        let id = args?["id"] as? String
-      else { return result("unavailable") }
-      pasted.offer(clip: id, ttlMs: args?["ttl_ms"] as? Int ?? 120_000) { result($0) }
     case "fileProviderSettings":
       if #available(macOS 13.0, *) { PastedFiles.openSettings() }
-      result(nil)
-    case "clipboardRead":
-      result(clipboard.read())
-    case "clipboardApply":
-      clipboard.apply(args ?? [:])
       result(nil)
     case "confirmOwner":
       OwnerCheck.run(reason: args?["reason"] as? String ?? "", result: result)
@@ -249,23 +247,23 @@ final class BackgroundMode: NSObject {
   /// A window made in code lives only as long as something holds it.
   private var window: MainFlutterWindow?
 
-  /// Started by the system at login, nothing is shown: the engine starts
-  /// with a window that is let go at once, and Dart keeps running.
+  /// Started by the system at login, nothing is shown and Flutter does not
+  /// start: the core runs on its own until the owner opens Zerohop.
   func start(visible: Bool) {
-    let window = MainFlutterWindow.make(frame: nil)
+    Service.shared.start { _ in }
     guard visible else {
       NSApp.setActivationPolicy(.accessory)
-      window.dropInterface()
       return
     }
+    let window = MainFlutterWindow.make(frame: nil)
     self.window = window
     (NSApp.delegate as? FlutterAppDelegate)?.mainFlutterWindow = window
     window.makeKeyAndOrderFront(nil)
   }
 
   /// A closed window keeps the last picture it showed, and the surfaces
-  /// behind it, until it draws again. So the window goes too, not only the
-  /// interface, and a new one is made when the owner opens Zerohop.
+  /// behind it, until it draws again. So the window goes too, with all of
+  /// Flutter, and a new one is made when the owner opens Zerohop.
   func windowClosed(_ window: MainFlutterWindow) {
     guard isOn else { return }
     NSApp.setActivationPolicy(.accessory)
@@ -407,7 +405,7 @@ final class SharedClipboard {
     if clip["state"] as? String == "ok" { report("clipboardCopied", clip) }
   }
 
-  func read() -> [String: Any] {
+  private func read() -> [String: Any] {
     guard let types = board.types, !types.isEmpty else { return ["state": "empty"] }
     if types.contains(where: { Self.notForOthers.contains($0.rawValue) }) {
       return ["state": "secret"]
@@ -430,7 +428,7 @@ final class SharedClipboard {
     guard types.contains(.png) || types.contains(.tiff) else { return ["state": "empty"] }
     guard let png = readPng() else { return ["state": "denied"] }
     if png.count > Self.maxImage { return ["state": "too_large"] }
-    return ["state": "ok", "format": "png", "data": FlutterStandardTypedData(bytes: png)]
+    return ["state": "ok", "format": "png", "data": png]
   }
 
   private func readPng() -> Data? {
@@ -439,21 +437,21 @@ final class SharedClipboard {
     return NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
   }
 
-  func apply(_ arguments: [String: Any]) {
-    let format = arguments["format"] as? String
+  /// Puts what another device copied on the clipboard, for its lifetime.
+  func apply(format: String?, text: String?, data: Data?, ttlMs: Int) {
     let item = NSPasteboardItem()
-    if format == "text", let text = arguments["text"] as? String {
+    if format == "text", let text {
       item.setString(text, forType: .string)
-    } else if let image = (arguments["data"] as? FlutterStandardTypedData)?.data {
+    } else if let data {
       let png =
         format == "png"
-        ? image : NSBitmapImageRep(data: image)?.representation(using: .png, properties: [:])
+        ? data : NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:])
       guard let png else { return }
       item.setData(png, forType: .png)
     } else {
       return
     }
-    write([item], ttl: Double(arguments["ttl_ms"] as? Int ?? 120_000) / 1000)
+    write([item], ttl: Double(ttlMs) / 1000)
   }
 
   /// Puts files copied on another device on the clipboard: placeholders

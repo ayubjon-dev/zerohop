@@ -1,5 +1,6 @@
 // The few things only the operating system can do.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'windows_images.dart';
 
 const _channel = MethodChannel('dev.zerohop/platform');
+const _core = BasicMessageChannel<ByteData?>('dev.zerohop/core', BinaryCodec());
 
 /// How this system lets copied content leave it.
 enum ClipboardSupport {
@@ -42,17 +44,20 @@ class PlatformBridge {
     bool? scanner,
     bool? ownerCheck,
     bool? pastesFiles,
+    bool? ownsCore,
   }) : _clipboard = clipboard,
        _photos = photos,
        _scanner = scanner,
        _ownerCheck = ownerCheck,
-       _pastesFiles = pastesFiles;
+       _pastesFiles = pastesFiles,
+       _ownsCore = ownsCore;
 
   final ClipboardSupport? _clipboard;
   final bool? _photos;
   final bool? _scanner;
   final bool? _ownerCheck;
   final bool? _pastesFiles;
+  final bool? _ownsCore;
 
   bool get _isMac => Platform.isMacOS;
   bool get _isAndroid => Platform.isAndroid;
@@ -67,6 +72,33 @@ class PlatformBridge {
           : Platform.isIOS
           ? ClipboardSupport.tapWhileOpen
           : ClipboardSupport.none);
+
+  /// The system's own code starts the core, finds devices and handles the
+  /// clipboard, so that nothing of the interface stays in memory while its
+  /// window is closed (macOS). The interface then only shows and asks.
+  bool get ownsCore => _ownsCore ?? _isMac;
+
+  /// Joins the core that the system's own code runs, starting it first if
+  /// needed, and hands every message from it to [onMessage]. Answers with
+  /// `state`: "running", "key_unavailable" or "failed", `access`: what macOS
+  /// lets Zerohop read unasked, and `files`: whether files copied on other
+  /// devices can be pasted here.
+  Future<Map<String, dynamic>> attachCore(
+    void Function(String message) onMessage,
+  ) async {
+    _core.setMessageHandler((data) async {
+      if (data != null) {
+        onMessage(
+          utf8.decode(
+            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          ),
+        );
+      }
+      return null;
+    });
+    final answer = await _channel.invokeMapMethod<String, dynamic>('attach');
+    return answer ?? const {'state': 'failed'};
+  }
 
   /// Copied files can go through the clipboard: the computers that send
   /// each copy as it is made.
@@ -234,6 +266,7 @@ class PlatformBridge {
     required void Function(List<String> paths) onShared,
     void Function()? onPasteFailed,
     void Function(String state)? onFilesState,
+    void Function(String from, String? state)? onFilesOffered,
   }) {
     _channel.setMethodCallHandler((call) async {
       final arguments = Map<String, dynamic>.from(call.arguments as Map);
@@ -250,6 +283,11 @@ class PlatformBridge {
           onPasteFailed?.call();
         case 'clipboardFilesState':
           onFilesState?.call(arguments['state'] as String);
+        case 'clipboardFilesOffered':
+          onFilesOffered?.call(
+            arguments['from'] as String,
+            arguments['state'] as String?,
+          );
       }
       return null;
     });

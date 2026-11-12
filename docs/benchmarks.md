@@ -92,3 +92,14 @@ Measured again on 2026-11-11 on the same Mac, now that closing the window lets t
 The footprint is what Activity Monitor shows as Memory. For the first half minute with the window open, drawing takes up to about 280 MB, mostly graphics memory, which the renderer gives back afterwards. After the window has been open once, the engine keeps about 15 MB of graphics memory. Windows cannot let the interface go without stopping the engine, because its Flutter embedding offers no other way, so it is unchanged. On Android the service already runs without the interface; it now passes the system's requests to free memory on to Flutter while no screen is open, which has not been measured.
 
 All of these are above the 30 MB target for an idle service, because a Flutter engine stays loaded. Reaching it needs a background mode without Flutter.
+
+Measured on 2026-11-12 on the same Mac, with the owner's real circle (a Windows computer and an Android phone, both nearby) and the shared clipboard on. The Mac now runs the core, finding devices and the shared clipboard in its own Swift code, and Flutter only while the window is open: closing the window shuts the engine down and lets Dart go with it.
+
+| Mac | Memory (footprint) | CPU |
+|---|---|---|
+| Started as at login, the window never opened | 13 to 16 MB | 0.0% |
+| Window open, after the first minute | 84 to 92 MB | not measured |
+| Just after closing the window | 37 to 38 MB | not measured |
+| Half a minute and longer after closing it | 31 to 37 MB | 0.0% |
+
+The login start was made by opening the app with the same Apple event macOS sends to a login item, so it took the same path. Opening the window again starts a new engine, and closing it frees the memory again. Two rounds of opening and closing the window gave the same picture. What stays after the window has been open once is mostly memory the system allocator keeps for reuse, 17 to 20 MB against about 8 MB actually in use, so the 30 MB target is met while Zerohop runs as it starts at login, and slightly missed after the window has been open, until the next login.
